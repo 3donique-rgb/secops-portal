@@ -19,7 +19,7 @@
 - [x] 1.5 scan_results·notifications 표 정의
 - [x] 1.6 audit_logs·api_keys 표 정의
 - [x] 1.7 마이그레이션 실행, 표가 모두 생겼는지 확인 (Supabase SQL Editor에서 실행, 12개 표·RLS 켜짐 확인)
-- [ ] 1.8 개발용 가짜 데이터 스크립트(seed-demo): 출처 3개, 지표 50건, 자산 10개
+- [x] 1.8 개발용 가짜 데이터 스크립트(seed-demo): 출처 3개, 지표 50건, 자산 10개 (가짜 DB 시험 완료, 실제 DB 실행은 접속 설정 후: npm run seed:demo)
 
 ## 2. 핵심 기능 (화면 없이) (1차)
 - [x] 2.1 lib/normalize.ts: 지표 정규화·종류 판별
@@ -35,7 +35,7 @@
 - [x] 2.11 lib/auth.ts: 허용 IP 판정(관리자 예외)
 - [x] 2.12 lib/auth.ts: 임시 쿠키·세션 쿠키, 권한 확인 함수
 - [x] 2.13 tests: 로그인 판정 시험 사례 6가지 이상 통과
-- [ ] 2.14 최초 관리자 생성 스크립트(seed-admin, 2.9의 비밀번호 해시 사용)
+- [x] 2.14 최초 관리자 생성 스크립트(seed-admin, 2.9의 비밀번호 해시 사용) (가짜 DB 시험 완료, 실제 DB 실행은 접속 설정 후: npm run seed:admin)
 
 ## 3. 로그인·공통 화면 (1차)
 - [ ] 3.1 /login 화면과 1차 인증 API
