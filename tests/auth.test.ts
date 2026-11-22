@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { userAllowedIps, users } from "../db/schema";
+import { SignJWT } from "jose";
 import { generateSync } from "otplib";
 import {
   MAX_FAILED_ATTEMPTS,
@@ -8,9 +9,21 @@ import {
   buildOtpAuthUri,
   checkAllowedIp,
   confirmOtpSetup,
+  cookieOptions,
   createOtpSecret,
+  createPreAuthToken,
+  createSessionToken,
+  ForbiddenError,
   getClientIp,
+  getSessionUser,
+  hasRole,
   hashPassword,
+  PRE_AUTH_TTL_SECONDS,
+  readPreAuthToken,
+  readSessionToken,
+  requireRole,
+  SESSION_TTL_SECONDS,
+  UnauthorizedError,
   recordFailedAttempt,
   renderQrDataUrl,
   resetFailedCount,
@@ -57,6 +70,21 @@ import { createTestDb, resetData } from "./helpers/test-db";
  * 24. 접속 IP를 알 수 없음           → 일반 계정은 거부 (no_ip)
  * 25. 다른 계정에 등록된 IP          → 적용되지 않음
  * 26. 헤더에서 접속 IP 추출          → x-forwarded-for 맨 앞, 포트·대괄호 제거, 잘못된 값은 x-real-ip로 대체
+ *
+ * 세션·권한 (2.12)
+ * 27. 임시/세션 토큰               → 서로 바꿔 쓸 수 없음
+ * 28. 유효 시간                    → 임시 5분, 세션 8시간. 직전까지 유효, 1초 지나면 무효
+ * 29. 변조·다른 키·서명 없는 토큰   → 무효
+ * 30. SESSION_SECRET 없음/짧음      → 오류
+ * 31. 현재 사용자 확인              → 잠김·삭제·OTP 초기화·역할 변경이 즉시 반영
+ * 32. 권한 확인                    → 로그인 안 함 401, 조회전용이 관리자 화면 403, 관리자는 모두 통과
+ *
+ * 전체 로그인 흐름 (2.13): 비밀번호 → 잠김 → 허용 IP → 임시 쿠키 → OTP → 세션
+ * 33. 조회전용: 허용 IP에서 정상 로그인        → 세션 발급, 실패 횟수 초기화
+ * 34. 조회전용: 허용되지 않은 IP               → 임시 쿠키도 발급되지 않음
+ * 35. 관리자: 아무 IP에서 비밀번호+OTP 통과     → 로그인
+ * 36. 비밀번호만 통과(OTP 없음)               → 세션이 없어 어떤 화면도 못 봄
+ * 37. 임시 토큰을 세션 쿠키 자리에 넣기         → 거부
  */
 let ctx: Awaited<ReturnType<typeof createTestDb>>;
 const PASSWORD = "correct-horse-battery";
@@ -108,6 +136,10 @@ describe("비밀번호 해시", () => {
 });
 
 describe("verifyCredentials (1차 인증과 5회 잠금)", () => {
+  it("잠금 기준은 5회다 [고정]", () => {
+    expect(MAX_FAILED_ATTEMPTS).toBe(5);
+  });
+
   it("올바른 아이디·비밀번호는 통과한다", async () => {
     const u = await makeUser();
     const r = await verifyCredentials(ctx.db, "analyst1", PASSWORD);
@@ -351,5 +383,188 @@ describe("허용 IP 판정", () => {
     expect(getClientIp(h({ "x-forwarded-for": "garbage", "x-real-ip": "7.7.7.7" }))).toBe("7.7.7.7");
     expect(getClientIp(h({ "x-real-ip": "7.7.7.7" }))).toBe("7.7.7.7");
     expect(getClientIp(h({}))).toBeNull();
+  });
+});
+
+describe("세션 토큰과 권한", () => {
+  const SECRET = "test-session-secret-0123456789-abcdefghij";
+  const T = new Date("2026-11-22T00:00:00Z");
+  const after = (sec: number) => new Date(T.getTime() + sec * 1000);
+
+  it("임시 토큰과 세션 토큰은 서로 바꿔 쓸 수 없다", async () => {
+    const pre = await createPreAuthToken("u1", T, SECRET);
+    const ses = await createSessionToken("u1", T, SECRET);
+    expect(await readPreAuthToken(pre, T, SECRET)).toBe("u1");
+    expect(await readSessionToken(ses, T, SECRET)).toBe("u1");
+    expect(await readSessionToken(pre, T, SECRET)).toBeNull();
+    expect(await readPreAuthToken(ses, T, SECRET)).toBeNull();
+  });
+
+  it("유효 시간: 임시 5분, 세션 8시간 (직전까지 유효, 1초 지나면 무효)", async () => {
+    const pre = await createPreAuthToken("u1", T, SECRET);
+    const ses = await createSessionToken("u1", T, SECRET);
+    expect(await readPreAuthToken(pre, after(PRE_AUTH_TTL_SECONDS - 1), SECRET)).toBe("u1");
+    expect(await readPreAuthToken(pre, after(PRE_AUTH_TTL_SECONDS + 1), SECRET)).toBeNull();
+    expect(await readSessionToken(ses, after(SESSION_TTL_SECONDS - 1), SECRET)).toBe("u1");
+    expect(await readSessionToken(ses, after(SESSION_TTL_SECONDS + 1), SECRET)).toBeNull();
+    expect(SESSION_TTL_SECONDS).toBe(8 * 3600);
+  });
+
+  it("변조되었거나 다른 키로 서명했거나 서명이 없는 토큰은 무효다", async () => {
+    const ses = await createSessionToken("u1", T, SECRET);
+    const [h, p, sig] = ses.split(".");
+    const forgedPayload = Buffer.from(JSON.stringify({ purpose: "session", sub: "admin-id", exp: 9999999999 })).toString("base64url");
+    expect(await readSessionToken(`${h}.${forgedPayload}.${sig}`, T, SECRET)).toBeNull();
+    expect(await readSessionToken(`${h}.${p}.${sig.slice(0, -2)}xx`, T, SECRET)).toBeNull();
+    expect(await readSessionToken(ses, T, "another-secret-another-secret-another-")).toBeNull();
+    const unsigned = `${Buffer.from('{"alg":"none"}').toString("base64url")}.${p}.`;
+    expect(await readSessionToken(unsigned, T, SECRET)).toBeNull();
+    // 같은 키로 서명했어도 용도(purpose)가 없으면 무효
+    const noPurpose = await new SignJWT({}).setProtectedHeader({ alg: "HS256" }).setSubject("u1").setExpirationTime("1h").sign(new TextEncoder().encode(SECRET));
+    expect(await readSessionToken(noPurpose, new Date(), SECRET)).toBeNull();
+    for (const bad of [null, undefined, "", "abc", "a.b.c"]) {
+      expect(await readSessionToken(bad, T, SECRET)).toBeNull();
+    }
+  });
+
+  it("SESSION_SECRET이 없거나 32자 미만이면 오류를 낸다", async () => {
+    delete process.env.SESSION_SECRET;
+    await expect(createSessionToken("u1", T)).rejects.toThrow("SESSION_SECRET");
+    await expect(createSessionToken("u1", T, "short")).rejects.toThrow("32자");
+  });
+
+  it("쿠키 설정은 HttpOnly이고 만료 시간이 들어 있다", () => {
+    expect(cookieOptions(SESSION_TTL_SECONDS)).toMatchObject({
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_TTL_SECONDS,
+    });
+  });
+
+  async function enrolled(role: "admin" | "viewer" = "viewer", username = "analyst1") {
+    const u = await makeUser(username);
+    if (role === "admin") await ctx.db.update(users).set({ role }).where(eq(users.id, u.id));
+    const key = generateEncryptionKey();
+    const { secret } = await beginOtpSetup(ctx.db, u.id, key);
+    await confirmOtpSetup(ctx.db, u.id, generateSync({ secret }), { encKey: key });
+    return { u, secret, key };
+  }
+
+  it("현재 사용자 확인은 DB 상태(잠김·삭제·OTP 초기화·역할 변경)를 바로 반영한다", async () => {
+    const { u } = await enrolled();
+    const token = await createSessionToken(u.id, T, SECRET);
+    expect(await getSessionUser(ctx.db, token, T, SECRET)).toMatchObject({ id: u.id, role: "viewer", username: "analyst1" });
+
+    await ctx.db.update(users).set({ role: "admin" }).where(eq(users.id, u.id));
+    expect((await getSessionUser(ctx.db, token, T, SECRET))?.role).toBe("admin");
+
+    await ctx.db.update(users).set({ locked: true }).where(eq(users.id, u.id));
+    expect(await getSessionUser(ctx.db, token, T, SECRET)).toBeNull();
+    await unlockUser(ctx.db, u.id);
+    expect(await getSessionUser(ctx.db, token, T, SECRET)).not.toBeNull();
+
+    await resetUserOtp(ctx.db, u.id);
+    expect(await getSessionUser(ctx.db, token, T, SECRET)).toBeNull();
+
+    await ctx.db.delete(users).where(eq(users.id, u.id));
+    expect(await getSessionUser(ctx.db, token, T, SECRET)).toBeNull();
+  });
+
+  it("권한 확인: 로그인 안 함 401, 조회전용이 관리자 기능 403, 관리자는 모두 통과", () => {
+    const viewerUser = { id: "1", username: "v", name: "v", role: "viewer" as const };
+    const adminUser = { ...viewerUser, id: "2", role: "admin" as const };
+    expect(() => requireRole(null, "viewer")).toThrow(UnauthorizedError);
+    expect(() => requireRole(viewerUser, "admin")).toThrow(ForbiddenError);
+    expect(requireRole(viewerUser, "viewer")).toBe(viewerUser);
+    expect(requireRole(adminUser, "admin")).toBe(adminUser);
+    expect(requireRole(adminUser, "viewer")).toBe(adminUser);
+    expect(hasRole(undefined, "viewer")).toBe(false);
+  });
+});
+
+describe("전체 로그인 흐름", () => {
+  const SECRET = "test-session-secret-0123456789-abcdefghij";
+  const T = new Date("2026-11-22T09:00:00Z");
+
+  /** design.md 4.8의 순서를 그대로 따라가는 시험용 조립: 비밀번호 → 잠김 → 허용 IP → 임시 → OTP → 세션 */
+  async function login(opts: { username: string; password: string; ip: string | null; otp?: (secret: string) => string; secret?: string; key: string }) {
+    const cred = await verifyCredentials(ctx.db, opts.username, opts.password);
+    if (!cred.ok) return { stage: "password" as const, reason: cred.reason };
+    const ipCheck = await checkAllowedIp(ctx.db, cred.user, opts.ip);
+    if (!ipCheck.allowed) return { stage: "ip" as const, reason: ipCheck.reason };
+    const pre = await createPreAuthToken(cred.user.id, T, SECRET);
+    const userId = await readPreAuthToken(pre, T, SECRET);
+    if (!userId || !opts.otp || !opts.secret) return { stage: "otp-pending" as const, pre };
+    const otp = await verifyUserOtp(ctx.db, userId, opts.otp(opts.secret), { encKey: opts.key, now: T });
+    if (!otp.ok) return { stage: "otp" as const, reason: otp.reason };
+    await resetFailedCount(ctx.db, userId, T);
+    return { stage: "done" as const, session: await createSessionToken(userId, T, SECRET) };
+  }
+
+  async function account(role: "admin" | "viewer", username: string, allowedIp?: string) {
+    const u = await makeUser(username);
+    if (role === "admin") await ctx.db.update(users).set({ role }).where(eq(users.id, u.id));
+    if (allowedIp) await ctx.db.insert(userAllowedIps).values({ userId: u.id, cidr: allowedIp });
+    const key = generateEncryptionKey();
+    const { secret } = await beginOtpSetup(ctx.db, u.id, key);
+    await confirmOtpSetup(ctx.db, u.id, generateSync({ secret, epoch: Math.floor(T.getTime() / 1000) }), { encKey: key, now: T });
+    return { u, secret, key };
+  }
+  const goodOtp = (secret: string) => generateSync({ secret, epoch: Math.floor(T.getTime() / 1000) });
+
+  it("조회전용 계정이 허용 IP에서 정상 로그인하면 세션이 발급되고 실패 횟수가 초기화된다", async () => {
+    const { u, secret, key } = await account("viewer", "analyst1", "203.0.113.0/24");
+    await verifyCredentials(ctx.db, "analyst1", "wrong-password"); // 실패 1회
+    expect((await getUser(u.id)).failedCount).toBe(1);
+
+    const r = await login({ username: "analyst1", password: PASSWORD, ip: "203.0.113.50", otp: goodOtp, secret, key });
+    expect(r.stage).toBe("done");
+    if (r.stage !== "done") return;
+    expect(await getSessionUser(ctx.db, r.session, T, SECRET)).toMatchObject({ id: u.id, role: "viewer" });
+    const row = await getUser(u.id);
+    expect(row.failedCount).toBe(0);
+    expect(row.lastLoginAt).toEqual(T);
+  });
+
+  it("허용되지 않은 IP에서는 임시 쿠키도 발급되지 않는다", async () => {
+    const { secret, key } = await account("viewer", "analyst1", "203.0.113.0/24");
+    const r = await login({ username: "analyst1", password: PASSWORD, ip: "198.51.100.1", otp: goodOtp, secret, key });
+    expect(r).toEqual({ stage: "ip", reason: "not_listed" });
+  });
+
+  it("관리자는 허용 IP 등록 없이 어느 IP에서든 비밀번호와 OTP로 로그인한다", async () => {
+    const { u, secret, key } = await account("admin", "boss");
+    const r = await login({ username: "boss", password: PASSWORD, ip: "198.51.100.1", otp: goodOtp, secret, key });
+    expect(r.stage).toBe("done");
+    if (r.stage === "done") expect((await getSessionUser(ctx.db, r.session, T, SECRET))?.id).toBe(u.id);
+  });
+
+  it("관리자도 OTP를 틀리면 로그인하지 못하고, 5회 틀리면 잠긴다", async () => {
+    const { secret, key } = await account("admin", "boss");
+    let last: Awaited<ReturnType<typeof login>> | undefined;
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) {
+      last = await login({ username: "boss", password: PASSWORD, ip: "1.1.1.1", otp: () => "000000", secret, key });
+      expect(last.stage).toBe("otp");
+    }
+    expect(last).toEqual({ stage: "otp", reason: "locked" });
+    // 잠긴 뒤에는 맞는 비밀번호·OTP도 거부
+    expect(await login({ username: "boss", password: PASSWORD, ip: "1.1.1.1", otp: goodOtp, secret, key })).toEqual({ stage: "password", reason: "locked" });
+  });
+
+  it("비밀번호만 통과하고 OTP를 입력하지 않으면 세션이 없어 어떤 화면도 볼 수 없다", async () => {
+    await account("admin", "boss");
+    const key = generateEncryptionKey();
+    const r = await login({ username: "boss", password: PASSWORD, ip: "1.1.1.1", key });
+    expect(r.stage).toBe("otp-pending");
+    if (r.stage !== "otp-pending") return;
+    expect(await getSessionUser(ctx.db, r.pre, T, SECRET)).toBeNull();
+  });
+
+  it("OTP를 등록하지 않은 계정은 세션을 받을 수 없다", async () => {
+    const u = await makeUser("newbie");
+    await ctx.db.update(users).set({ role: "admin" }).where(eq(users.id, u.id));
+    const session = await createSessionToken(u.id, T, SECRET);
+    expect(await getSessionUser(ctx.db, session, T, SECRET)).toBeNull();
   });
 });

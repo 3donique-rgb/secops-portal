@@ -5,10 +5,11 @@
  *  2.9  비밀번호 해시·검증, 5회 잠금
  *  2.10 OTP 비밀키 생성·QR·코드 검증   (구글 오센티케이터 호환 TOTP)
  *  2.11 허용 IP 판정(관리자 예외)      (접속 IP 추출 포함)
- *  2.12 임시 쿠키·세션 쿠키, 권한 확인
+ *  2.12 임시 쿠키·세션 쿠키, 권한 확인  (서명된 토큰: jose)
  */
 import { hash, verify } from "@node-rs/argon2";
 import { eq, sql } from "drizzle-orm";
+import { SignJWT, jwtVerify } from "jose";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import QRCode from "qrcode";
 import { userAllowedIps, users } from "../db/schema";
@@ -338,4 +339,150 @@ export async function checkAllowedIp(
   return hit
     ? { allowed: true, reason: "listed" }
     : { allowed: false, reason: "not_listed" };
+}
+
+// ---------------------------------------------------------------------------
+// 임시 쿠키(1차 통과 후 OTP 입력 전)와 세션 쿠키(로그인 완료)
+// ---------------------------------------------------------------------------
+
+/** 1차 인증을 통과하고 OTP를 입력하는 동안만 쓰는 임시 쿠키. 이 쿠키만으로는 어떤 화면도 볼 수 없다. */
+export const PRE_AUTH_COOKIE = "secops_pre";
+export const SESSION_COOKIE = "secops_session";
+export const PRE_AUTH_TTL_SECONDS = 5 * 60;
+export const SESSION_TTL_SECONDS = 8 * 60 * 60;
+
+type TokenPurpose = "pre" | "session";
+
+function secretKey(secret?: string): Uint8Array {
+  const value = secret ?? process.env.SESSION_SECRET;
+  if (!value) throw new Error("SESSION_SECRET 환경변수가 설정되지 않았습니다.");
+  if (value.length < 32) {
+    throw new Error("SESSION_SECRET은 32자 이상이어야 합니다.");
+  }
+  return new TextEncoder().encode(value);
+}
+
+async function signToken(
+  purpose: TokenPurpose,
+  userId: string,
+  ttlSeconds: number,
+  now: Date,
+  secret?: string,
+): Promise<string> {
+  const iat = Math.floor(now.getTime() / 1000);
+  return new SignJWT({ purpose })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(userId)
+    .setIssuedAt(iat)
+    .setExpirationTime(iat + ttlSeconds)
+    .sign(secretKey(secret));
+}
+
+async function readToken(
+  purpose: TokenPurpose,
+  token: string | undefined | null,
+  now: Date,
+  secret?: string,
+): Promise<string | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secretKey(secret), {
+      algorithms: ["HS256"],
+      currentDate: now,
+    });
+    // 임시 토큰을 세션 토큰으로 쓰거나 그 반대로 쓰는 것을 막는다
+    if (payload.purpose !== purpose || typeof payload.sub !== "string") return null;
+    return payload.sub;
+  } catch {
+    return null;
+  }
+}
+
+/** 임시 토큰(5분). 아이디·비밀번호와 허용 IP를 통과했을 때 발급한다. */
+export function createPreAuthToken(userId: string, now = new Date(), secret?: string) {
+  return signToken("pre", userId, PRE_AUTH_TTL_SECONDS, now, secret);
+}
+/** 세션 토큰(8시간). OTP까지 통과했을 때 발급한다. */
+export function createSessionToken(userId: string, now = new Date(), secret?: string) {
+  return signToken("session", userId, SESSION_TTL_SECONDS, now, secret);
+}
+/** 임시 토큰이 유효하면 사용자 id, 아니면 null */
+export function readPreAuthToken(token: string | undefined | null, now = new Date(), secret?: string) {
+  return readToken("pre", token, now, secret);
+}
+/** 세션 토큰이 유효하면 사용자 id, 아니면 null */
+export function readSessionToken(token: string | undefined | null, now = new Date(), secret?: string) {
+  return readToken("session", token, now, secret);
+}
+
+/** 쿠키 설정값. 자바스크립트로 읽을 수 없게(HttpOnly), 운영에서는 HTTPS에서만(Secure) 보낸다. */
+export function cookieOptions(maxAgeSeconds: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: maxAgeSeconds,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 현재 사용자와 권한 확인
+// ---------------------------------------------------------------------------
+
+export type SessionUser = {
+  id: string;
+  username: string;
+  name: string;
+  role: "admin" | "viewer";
+};
+
+/**
+ * 세션 토큰으로 현재 사용자를 확인한다. 토큰이 유효해도 DB에서 다시 확인해서
+ * 삭제되었거나 잠긴 계정이면 null (권한 변경도 바로 반영된다).
+ */
+export async function getSessionUser(
+  db: Db,
+  token: string | undefined | null,
+  now = new Date(),
+  secret?: string,
+): Promise<SessionUser | null> {
+  const userId = await readSessionToken(token, now, secret);
+  if (!userId) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || user.locked || !user.otpEnabled) return null;
+  return { id: user.id, username: user.username, name: user.name, role: user.role };
+}
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("로그인이 필요합니다.");
+    this.name = "UnauthorizedError";
+  }
+}
+export class ForbiddenError extends Error {
+  constructor() {
+    super("이 작업을 할 권한이 없습니다.");
+    this.name = "ForbiddenError";
+  }
+}
+
+const ROLE_LEVEL = { viewer: 1, admin: 2 } as const;
+
+/** 필요한 권한 이상인지. 관리자는 조회전용 권한이 필요한 곳에도 접근한다. */
+export function hasRole(
+  user: Pick<SessionUser, "role"> | null | undefined,
+  required: "admin" | "viewer",
+): boolean {
+  return !!user && ROLE_LEVEL[user.role] >= ROLE_LEVEL[required];
+}
+
+/** 로그인하지 않았으면 UnauthorizedError(401), 권한이 부족하면 ForbiddenError(403)를 던진다. */
+export function requireRole(
+  user: SessionUser | null | undefined,
+  required: "admin" | "viewer",
+): SessionUser {
+  if (!user) throw new UnauthorizedError();
+  if (!hasRole(user, required)) throw new ForbiddenError();
+  return user;
 }
