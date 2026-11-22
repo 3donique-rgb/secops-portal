@@ -6,7 +6,7 @@ import type { Db } from "./indicators";
 const HOUR = 3600_000;
 
 export type Dashboard = {
-  indicators: { total: number; active: number; excluded: number; new24h: number; new7d: number; byType: Record<string, number> };
+  indicators: { total: number; active: number; excluded: number; new24h: number; new7d: number; byType: Record<string, number>; hourly: number[] };
   sources: { id: string; name: string; enabled: boolean; lastSuccessAt: Date | null; lastStatus: "success" | "fail" | null; lastError: string | null; stale: boolean }[];
   assets: { total: number; enabled: number };
   notifications: { unread: number; recent: { id: string; kind: string; message: string; assetId: string; assetName: string; occurredAt: Date; read: boolean }[] };
@@ -23,6 +23,13 @@ export async function getDashboard(db: Db, now: Date = new Date()): Promise<Dash
       new7d: sql<number>`count(*) filter (where ${indicators.firstSeenAt} >= ${since(24 * 7).toISOString()}::timestamptz)::int`,
     })
     .from(indicators);
+  // 최근 24시간 시간대별 신규 건수: 맨 앞이 24시간 전, 맨 끝이 가장 최근 1시간
+  const newRows = await db.select({ at: indicators.firstSeenAt }).from(indicators).where(gte(indicators.firstSeenAt, since(24)));
+  const hourly = Array.from({ length: 24 }, () => 0);
+  for (const r of newRows) {
+    const ago = Math.floor((now.getTime() - r.at.getTime()) / HOUR);
+    if (ago >= 0 && ago < 24) hourly[23 - ago]++;
+  }
   const byTypeRows = await db
     .select({ type: indicators.type, n: sql<number>`count(*)::int` })
     .from(indicators)
@@ -57,7 +64,7 @@ export async function getDashboard(db: Db, now: Date = new Date()): Promise<Dash
     .limit(5);
 
   return {
-    indicators: { ...ind, byType: Object.fromEntries(byTypeRows.map((r) => [r.type, r.n])) },
+    indicators: { ...ind, byType: Object.fromEntries(byTypeRows.map((r) => [r.type, r.n])), hourly },
     // 사용 중인데 3시간 넘게 성공이 없으면 "지연"으로 표시 (매시간 수집 기준)
     sources: srcRows.map((s) => ({ ...s, stale: s.enabled && (!s.lastSuccessAt || now.getTime() - s.lastSuccessAt.getTime() > 3 * HOUR) })),
     assets: ast,

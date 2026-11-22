@@ -31,10 +31,13 @@ export function NotificationBell({ initial }: { initial: number }) {
     };
   }, []);
   return (
-    <Link href="/notifications" aria-label={unread > 0 ? `알림 ${unread}건` : "알림"} title="알림" className="relative text-lg">
-      🔔
+    <Link href="/notifications" aria-label={unread > 0 ? `알림 ${unread}건` : "알림"} title="알림" className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--ink-soft)] hover:bg-black/5">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8" />
+        <path d="M10.3 20a2 2 0 0 0 3.4 0" />
+      </svg>
       {unread > 0 && (
-        <span className="absolute -top-1 -right-2 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 text-white">
+        <span className="absolute top-0.5 right-0 min-w-4 rounded-full bg-[var(--bad)] px-1 text-center text-[10px] leading-4 text-white">
           {unread > 99 ? "99+" : unread}
         </span>
       )}

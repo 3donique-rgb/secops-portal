@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { NotificationBell } from "@/components/notification-bell";
+import { SideNav } from "@/components/side-nav";
 import { getDb } from "@/db";
 import { unreadCount } from "@/lib/notifications";
 import { requireUser } from "@/lib/session";
@@ -24,49 +25,42 @@ const ADMIN_MENU = [
 async function Shell({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const unread = await unreadCount(getDb());
+  const groups = [{ title: "관제", items: MENU }, ...(user.role === "admin" ? [{ title: "관리", items: ADMIN_MENU }] : [])];
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-gray-200">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-          <Link href="/" className="font-bold">
-            보안관제 포털
-          </Link>
-          <nav className="flex flex-1 flex-wrap items-center gap-4 text-sm">
-            {MENU.map((m) => (
-              <Link key={m.href} href={m.href} className="hover:underline">
-                {m.label}
-              </Link>
-            ))}
-            {user.role === "admin" && (
-              <>
-                <span className="text-gray-300">|</span>
-                {ADMIN_MENU.map((m) => (
-                  <Link key={m.href} href={m.href} className="hover:underline">
-                    {m.label}
-                  </Link>
-                ))}
-              </>
-            )}
-          </nav>
+    <div className="min-h-screen lg:grid lg:grid-cols-[232px_1fr]">
+      <aside className="bg-[var(--nav-bg)] px-3 py-4 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:py-6">
+        <Link href="/" className="mb-4 flex items-center gap-2.5 px-3 text-white lg:mb-8">
+          <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-md bg-[var(--signal)] text-sm font-bold">
+            S
+          </span>
+          <span className="font-semibold tracking-tight">보안관제 포털</span>
+        </Link>
+        <SideNav groups={groups} />
+      </aside>
+      <div className="min-w-0">
+        <header className="flex items-center justify-end gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-6 py-2.5">
           <NotificationBell initial={unread} />
-          <span className="text-sm text-gray-600">
-            {user.name} ({user.role === "admin" ? "관리자" : "조회"})
+          <span className="text-sm text-[var(--ink-soft)]">
+            {user.name}
+            <span className="ml-1.5 rounded bg-[var(--signal-soft)] px-1.5 py-0.5 text-xs font-medium text-[var(--signal)]">
+              {user.role === "admin" ? "관리자" : "조회"}
+            </span>
           </span>
           <form action={logoutAction}>
-            <button type="submit" className="text-sm underline">
+            <button type="submit" className="rounded-md px-2.5 py-1.5 text-sm text-[var(--ink-soft)] hover:bg-black/5">
               로그아웃
             </button>
           </form>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+        </header>
+        <main className="mx-auto max-w-6xl px-6 py-7">{children}</main>
+      </div>
     </div>
   );
 }
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<p className="p-6 text-sm text-gray-500">불러오는 중…</p>}>
+    <Suspense fallback={<p className="p-6 text-sm text-[var(--ink-soft)]">불러오는 중…</p>}>
       <Shell>{children}</Shell>
     </Suspense>
   );

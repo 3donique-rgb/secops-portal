@@ -30,6 +30,7 @@ describe("대시보드", () => {
   it("빈 DB는 모두 0", async () => {
     const d = await getDashboard(ctx.db, NOW);
     expect(d.indicators).toMatchObject({ total: 0, active: 0, excluded: 0, new24h: 0, new7d: 0, byType: {} });
+    expect(d.indicators.hourly).toEqual(Array.from({ length: 24 }, () => 0));
     expect(d.assets).toEqual({ total: 0, enabled: 0 });
     expect(d.notifications).toEqual({ unread: 0, recent: [] });
     expect(d.sources).toEqual([]);
@@ -60,6 +61,8 @@ describe("대시보드", () => {
 
     const d = await getDashboard(ctx.db, NOW);
     expect(d.indicators).toMatchObject({ total: 3, active: 2, excluded: 1, new24h: 1, new7d: 2, byType: { ip: 1, domain: 1 } });
+    expect(d.indicators.hourly[21]).toBe(1); // 2시간 전에 처음 들어온 1건
+    expect(d.indicators.hourly.reduce((a, b) => a + b, 0)).toBe(d.indicators.new24h);
     const byName = Object.fromEntries(d.sources.map((s) => [s.name, s]));
     expect(byName["정상"]).toMatchObject({ lastStatus: "success", stale: false });
     expect(byName["지연"]).toMatchObject({ lastStatus: "fail", lastError: "HTTP 503", stale: true });

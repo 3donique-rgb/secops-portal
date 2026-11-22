@@ -1,20 +1,29 @@
 @import "tailwindcss";
 
+/* 보안관제 포털 색상표: 잉크 네이비 + 신호 청록, 상태는 앰버·레드·그린 */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f3f5f6;
+  --foreground: #14202a;
+  --surface: #ffffff;
+  --line: #dde3e7;
+  --ink-soft: #55636e;
+  --nav-bg: #13212c;
+  --nav-text: #b9c5ce;
+  --nav-muted: #6f8190;
+  --signal: #0e7c7b;
+  --signal-soft: #e3f2f1;
+  --ok: #177245;
+  --ok-soft: #e6f4ec;
+  --warn: #b45309;
+  --warn-soft: #fdf1e1;
+  --bad: #b42318;
+  --bad-soft: #fdeceb;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -23,4 +32,58 @@ body {
   font-family:
     "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR",
     system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* 목록·검색 화면 공통 모양 (utility 클래스가 있으면 그쪽이 우선) */
+@layer components {
+  main table thead th {
+    padding: 0.65rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  main table tbody td {
+    padding: 0.6rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+  }
+  main table tbody tr:hover {
+    background: rgb(0 0 0 / 0.025);
+  }
+  main a:not([class]) {
+    color: var(--signal);
+    text-decoration: none;
+  }
+  main a:not([class]):hover {
+    text-decoration: underline;
+  }
+  main input:not([type="checkbox"]):not([type="radio"]),
+  main select,
+  main textarea {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.375rem;
+    padding: 0.4rem 0.6rem;
+  }
+  main form:has(select, input[type="date"]) {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+  }
 }
