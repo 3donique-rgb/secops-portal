@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
+import { writeAudit } from "@/lib/audit";
 import { users } from "@/db/schema";
 import {
   PRE_AUTH_COOKIE,
@@ -41,8 +42,10 @@ export async function otpAction(_prev: OtpState, formData: FormData): Promise<Ot
   }
 
   // 임시 토큰을 받은 뒤 IP 설정이 바뀌었을 수 있으므로 다시 확인한다.
-  const ipCheck = await checkAllowedIp(db, user, getClientIp(await headers()));
+  const ip = getClientIp(await headers());
+  const ipCheck = await checkAllowedIp(db, user, ip);
   if (!ipCheck.allowed) {
+    await writeAudit(db, { userId: user.id, action: "login_ip_denied", target: user.username, detail: { step: "otp" }, ip });
     jar.delete(PRE_AUTH_COOKIE);
     redirect("/login");
   }
@@ -50,6 +53,13 @@ export async function otpAction(_prev: OtpState, formData: FormData): Promise<Ot
   if (user.otpEnabled) {
     const r = await verifyUserOtp(db, user.id, code);
     if (!r.ok) {
+      await writeAudit(db, {
+        userId: user.id,
+        action: r.reason === "locked" ? "login_locked" : "login_fail",
+        target: user.username,
+        detail: { step: "otp" },
+        ip,
+      });
       if (r.reason === "locked") {
         jar.delete(PRE_AUTH_COOKIE);
         return { error: "실패가 누적되어 계정이 잠겼습니다. 관리자에게 잠금 해제를 요청하세요." };
@@ -58,10 +68,14 @@ export async function otpAction(_prev: OtpState, formData: FormData): Promise<Ot
     }
   } else {
     const ok = await confirmOtpSetup(db, user.id, code);
-    if (!ok) return { error: "코드가 올바르지 않습니다. 앱에 표시된 최신 코드를 입력하세요." };
+    if (!ok) {
+      await writeAudit(db, { userId: user.id, action: "login_fail", target: user.username, detail: { step: "otp_setup" }, ip });
+      return { error: "코드가 올바르지 않습니다. 앱에 표시된 최신 코드를 입력하세요." };
+    }
   }
 
   await resetFailedCount(db, user.id);
+  await writeAudit(db, { userId: user.id, action: "login_success", target: user.username, ip });
   jar.delete(PRE_AUTH_COOKIE);
   jar.set(SESSION_COOKIE, await createSessionToken(user.id), cookieOptions(SESSION_TTL_SECONDS));
   redirect("/");

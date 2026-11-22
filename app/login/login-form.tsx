@@ -1,18 +1,22 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { loginAction, type LoginState } from "./actions";
 
 const initial: LoginState = { error: null };
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(loginAction, initial);
+  // 폼은 제출 후 초기화되므로 아이디는 따로 기억해 둔다 (비밀번호는 다시 입력)
+  const [username, setUsername] = useState("");
   return (
     <form action={formAction} className="space-y-4">
       <label className="block">
         <span className="text-sm font-medium">아이디</span>
         <input
           name="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
           required
           maxLength={64}

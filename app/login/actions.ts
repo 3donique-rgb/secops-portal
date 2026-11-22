@@ -3,6 +3,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
+import { writeAudit } from "@/lib/audit";
 import {
   LOGIN_ERROR_MESSAGE,
   PRE_AUTH_COOKIE,
@@ -28,8 +29,15 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   }
 
   const db = getDb();
+  const ip = getClientIp(await headers());
   const result = await verifyCredentials(db, username, password);
   if (!result.ok) {
+    await writeAudit(db, {
+      action: result.reason === "locked" ? "login_locked" : "login_fail",
+      target: username.slice(0, 64),
+      detail: { step: "password" },
+      ip,
+    });
     return {
       error:
         result.reason === "locked"
@@ -38,9 +46,15 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     };
   }
 
-  const ip = getClientIp(await headers());
   const ipCheck = await checkAllowedIp(db, result.user, ip);
   if (!ipCheck.allowed) {
+    await writeAudit(db, {
+      userId: result.user.id,
+      action: "login_ip_denied",
+      target: result.user.username,
+      detail: { reason: ipCheck.reason },
+      ip,
+    });
     return {
       error:
         ipCheck.reason === "not_registered"
