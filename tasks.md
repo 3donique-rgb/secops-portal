@@ -47,9 +47,9 @@
 - [x] 3.7 /admin/audit 화면, 로그인·관리 작업 기록 연결
 
 ## 4. 위협정보 화면·API (1차)
-- [ ] 4.1 /indicators 목록: 표, 종류·상태·출처 필터, 페이지 나누기
-- [ ] 4.2 /indicators 키워드·기간 검색
-- [ ] 4.3 /indicators/[id] 상세: 출처 목록
+- [x] 4.1 /indicators 목록: 표, 종류·상태·출처 필터, 페이지 나누기
+- [x] 4.2 /indicators 키워드·기간 검색
+- [x] 4.3 /indicators/[id] 상세: 출처 목록
 - [ ] 4.4 /admin/whitelist 화면 + 추가·삭제 시 제외 재계산
 - [ ] 4.5 lib/report-pdf.ts: PDF 보고서 생성(한글 폰트 포함)
 - [ ] 4.6 /reports 화면: 조건 입력, 미리보기 건수, PDF 내려받기

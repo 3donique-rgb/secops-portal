@@ -1,0 +1,151 @@
+import Link from "next/link";
+import { getDb } from "@/db";
+import { parseIndicatorParams, type RawParams } from "@/lib/indicator-params";
+import { INDICATOR_TYPES, listSourceNames, searchIndicators } from "@/lib/indicator-query";
+import { TYPE_LABEL } from "@/lib/labels";
+import { requireUser } from "@/lib/session";
+
+export const metadata = { title: "위협정보 - 보안관제 포털" };
+
+const PAGE_SIZE = 50;
+const fmt = (d: Date) => d.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
+
+export default async function IndicatorsPage({ searchParams }: { searchParams: Promise<RawParams> }) {
+  await requireUser();
+  const sp = await searchParams;
+  const { filter, page } = parseIndicatorParams(sp);
+  const db = getDb();
+  const [{ rows, total }, sourceNames] = await Promise.all([
+    searchIndicators(db, filter, { page, pageSize: PAGE_SIZE }),
+    listSourceNames(db),
+  ]);
+  const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+  const pageHref = (p: number) => {
+    const u = new URLSearchParams();
+    for (const t of filter.types ?? []) u.append("type", t);
+    if (filter.status) u.set("status", filter.status);
+    if (filter.sourceName) u.set("source", filter.sourceName);
+    if (filter.keyword) u.set("q", filter.keyword);
+    if (one(sp.from)) u.set("from", one(sp.from));
+    if (one(sp.to)) u.set("to", one(sp.to));
+    if (filter.excluded) u.set("excluded", filter.excluded);
+    u.set("page", String(p));
+    return `?${u.toString()}`;
+  };
+  const input = "rounded border border-gray-300 px-2 py-1.5 text-sm";
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-bold">위협정보</h1>
+      <form method="get" className="space-y-3 rounded border border-gray-200 p-3">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <span className="font-medium">종류</span>
+          {INDICATOR_TYPES.map((t) => (
+            <label key={t} className="flex items-center gap-1">
+              <input type="checkbox" name="type" value={t} defaultChecked={filter.types?.includes(t)} />
+              {TYPE_LABEL[t]}
+            </label>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            상태
+            <select name="status" defaultValue={filter.status ?? ""} className={`${input} block`}>
+              <option value="">전체</option>
+              <option value="active">활성</option>
+              <option value="inactive">비활성(만료)</option>
+            </select>
+          </label>
+          <label className="text-sm">
+            제공 기관
+            <select name="source" defaultValue={filter.sourceName ?? ""} className={`${input} block max-w-56`}>
+              <option value="">전체</option>
+              {sourceNames.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            SIEM 제외
+            <select name="excluded" defaultValue={filter.excluded ?? ""} className={`${input} block`}>
+              <option value="">전체</option>
+              <option value="only">제외된 것만</option>
+              <option value="none">제외 안 된 것만</option>
+            </select>
+          </label>
+          <label className="text-sm">
+            키워드 (값·메모·기관명)
+            <input name="q" defaultValue={filter.keyword ?? ""} maxLength={200} className={`${input} block`} />
+          </label>
+          <label className="text-sm">
+            최종 확인일 시작
+            <input name="from" type="date" defaultValue={one(sp.from)} className={`${input} block`} />
+          </label>
+          <label className="text-sm">
+            종료
+            <input name="to" type="date" defaultValue={one(sp.to)} className={`${input} block`} />
+          </label>
+          <button className="rounded bg-gray-900 px-3 py-1.5 text-sm text-white">검색</button>
+          <Link href="/indicators" className="text-sm underline">
+            초기화
+          </Link>
+        </div>
+      </form>
+
+      <p className="text-sm text-gray-600">총 {total.toLocaleString("ko-KR")}건</p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-gray-300 text-left">
+              <th className="py-2 pr-3">종류</th>
+              <th className="pr-3">값</th>
+              <th className="pr-3">제공 기관</th>
+              <th className="pr-3">최초 확인</th>
+              <th className="pr-3">최종 확인</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-gray-100 align-top">
+                <td className="py-1.5 pr-3 whitespace-nowrap">
+                  {TYPE_LABEL[r.type]}
+                  {r.hashKind && <span className="ml-1 text-xs text-gray-500">{r.hashKind}</span>}
+                </td>
+                <td className="pr-3 break-all">
+                  <Link href={`/indicators/${r.id}`} className="underline">
+                    {r.value}
+                  </Link>
+                </td>
+                <td className="pr-3">{r.sourceNames.join(", ")}</td>
+                <td className="pr-3 whitespace-nowrap">{fmt(r.firstSeenAt)}</td>
+                <td className="pr-3 whitespace-nowrap">{fmt(r.lastSeenAt)}</td>
+                <td className="whitespace-nowrap">
+                  {r.status === "active" ? "활성" : <span className="text-gray-500">비활성</span>}
+                  {r.excluded && <span className="ml-1 rounded bg-yellow-100 px-1 text-xs text-yellow-800">SIEM 제외</span>}
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-6 text-center text-gray-500">
+                  조건에 맞는 위협정보가 없습니다.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center gap-3 text-sm">
+        {page > 1 && <Link href={pageHref(page - 1)} className="underline">이전</Link>}
+        <span>
+          {page} / {pages}
+        </span>
+        {page < pages && <Link href={pageHref(page + 1)} className="underline">다음</Link>}
+      </div>
+    </div>
+  );
+}
