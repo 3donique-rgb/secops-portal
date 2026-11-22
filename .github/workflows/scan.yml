@@ -1,0 +1,46 @@
+# 자산 점검: 매일 새벽 2시 30분(한국 시간) 자동 실행. 자산을 4개 묶음으로 나눠 동시에 점검한다.
+# 수동 실행: Actions → 자산 점검 → Run workflow
+#   max_assets 에 숫자(예: 3)를 넣으면 앞의 자산 몇 개만 점검한다(처음 시험할 때 사용).
+# 필요한 Secrets: DATABASE_URL (Supabase Session pooler 주소)
+# 주의: 점검은 GitHub 서버의 IP에서 나가므로 대상 보안장비(방화벽·IPS)가 차단하면 "일부만 점검" 또는 "실패"로 기록된다.
+name: 자산 점검
+
+on:
+  schedule:
+    - cron: "30 17 * * *" # UTC 17:30 = KST 02:30
+  workflow_dispatch:
+    inputs:
+      max_assets:
+        description: "점검할 자산 수 제한 (비우면 전체)"
+        required: false
+        default: ""
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 자산 점검 (묶음 ${{ matrix.shard }}/4)
+        run: npm run scan
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SCAN_SHARD_INDEX: ${{ matrix.shard }}
+          SCAN_SHARD_TOTAL: "4"
+          SCAN_MAX_ASSETS: ${{ github.event.inputs.max_assets }}

@@ -77,15 +77,15 @@
 - [ ] 6.6 1차 배포 점검: 다른 PC에서 로그인·OTP·허용 IP 실제 확인, 사용 안내문 1쪽
 
 ## 7. 자산 점검 (2차)
-- [ ] 7.1 worker/scan/ports.ts: 단계별 포트 목록, 연결 시도, 처리량 제한
-- [ ] 7.2 worker/scan/ports.ts: 서비스·배너 식별
-- [ ] 7.3 worker/scan/tls.ts: 인증서 만료일
-- [ ] 7.4 worker/scan/paths.ts: 노출 페이지 경로 목록·HTTP 확인
-- [ ] 7.5 worker/scan/index.ts: 단계별 조합, 자산당 시간 제한, 결과 저장(하루 한 건 덮어쓰기)
-- [ ] 7.6 tests: 가짜 서버(내 컴퓨터)로 점검 시험, 점검 허가 없는 자산은 건너뛰는지 확인
-- [ ] 7.7 worker/scan/diff.ts: 변화 감지·알림 생성 + 시험
-- [ ] 7.8 /assets/[id]: 점검 이력, 날짜 간 비교 화면
-- [ ] 7.9 .github/workflows/scan.yml: 매일 실행, 자산 묶음 병렬 실행
+- [x] 7.1 worker/scan/ports.ts: 단계별 포트 목록, 연결 시도, 처리량 제한
+- [x] 7.2 worker/scan/ports.ts: 서비스·배너 식별
+- [x] 7.3 worker/scan/tls.ts: 인증서 만료일
+- [x] 7.4 worker/scan/paths.ts: 노출 페이지 경로 목록·HTTP 확인
+- [x] 7.5 worker/scan/index.ts: 단계별 조합, 자산당 시간 제한, 결과 저장(하루 한 건 덮어쓰기)
+- [x] 7.6 tests: 가짜 서버(내 컴퓨터)로 점검 시험, 점검 허가 없는 자산은 건너뛰는지 확인
+- [x] 7.7 worker/scan/diff.ts: 변화 감지·알림 생성 + 시험
+- [x] 7.8 /assets/[id]: 점검 이력, 날짜 간 비교 화면
+- [x] 7.9 .github/workflows/scan.yml: 매일 실행, 자산 묶음 병렬 실행
 - [ ] 7.10 소수 자산(3~5개)으로 실제 시험 후 단계적 확대, 대상 보안장비 허용 확인
 
 ## 작업 메모 (하루 마칠 때 맨 아래에 3줄로 정리)
