@@ -98,3 +98,76 @@ export const collectRuns = pgTable(
   },
   (t) => [index("collect_runs_source_started_idx").on(t.sourceId, t.startedAt)],
 );
+
+// ---------------------------------------------------------------------------
+// 1.3 위협정보(지표)·출처 연결
+// ---------------------------------------------------------------------------
+export const indicatorType = pgEnum("indicator_type", [
+  "ip",
+  "domain",
+  "url",
+  "hash",
+  "email",
+]);
+export const hashKind = pgEnum("hash_kind", ["md5", "sha1", "sha256"]);
+export const indicatorStatus = pgEnum("indicator_status", [
+  "active",
+  "inactive",
+]);
+
+export const indicators = pgTable(
+  "indicators",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    type: indicatorType().notNull(),
+    /** 정규화된 값 (소문자, 방어 표기 복원 등) */
+    value: text().notNull(),
+    /** type = 'hash'일 때만 값이 있다 */
+    hashKind: hashKind(),
+    status: indicatorStatus().notNull().default("active"),
+    /** 화이트리스트·우리 자산과 일치하면 true → SIEM 제공 목록에서만 제외 */
+    excluded: boolean().notNull().default(false),
+    firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    memo: text(),
+  },
+  (t) => [
+    // (종류, 값) 한 쌍은 한 건만 존재 [고정]
+    unique("indicators_type_value_uq").on(t.type, t.value),
+    // 해시 종류는 type = 'hash'일 때만
+    check(
+      "indicators_hash_kind_ck",
+      sql`(${t.type} = 'hash') = (${t.hashKind} is not null)`,
+    ),
+    // 인덱스 크기 한계를 넘는 아주 긴 값 방지
+    check("indicators_value_len_ck", sql`length(${t.value}) <= 2000`),
+    index("indicators_last_seen_idx").on(t.lastSeenAt),
+    index("indicators_status_excluded_idx").on(t.status, t.excluded),
+  ],
+);
+
+export const indicatorSources = pgTable(
+  "indicator_sources",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    indicatorId: uuid()
+      .notNull()
+      .references(() => indicators.id, { onDelete: "cascade" }),
+    /** 출처가 삭제되어도 기록은 남도록 set null */
+    sourceId: uuid().references(() => sources.id, { onDelete: "set null" }),
+    /** 기관명 복사본 (출처 필수 규칙 [고정]) */
+    sourceName: text().notNull(),
+    firstSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    refUrl: text(),
+    note: text(),
+  },
+  (t) => [
+    unique("indicator_sources_indicator_source_uq").on(
+      t.indicatorId,
+      t.sourceId,
+    ),
+  ],
+);
