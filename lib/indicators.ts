@@ -197,7 +197,10 @@ export async function saveIndicatorsBulk(
         target: [indicatorSources.indicatorId, indicatorSources.sourceId],
         set: { sourceName, lastSeenAt: now },
       });
-    for (const r of rows) r.inserted ? created++ : updated++;
+    for (const r of rows) {
+      if (r.inserted) created++;
+      else updated++;
+    }
   }
   return { created, updated, invalid };
 }
