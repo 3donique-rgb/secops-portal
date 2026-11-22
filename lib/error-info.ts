@@ -11,6 +11,7 @@ export function describeError(e: unknown): string {
   const safe = msg
     .replace(/[\w.-]+\.(com|co|net|io|org)\b/gi, "[주소]")
     .replace(/\d{1,3}(\.\d{1,3}){3}/g, "[IP]")
+    .replace(/[0-9a-f:]{2,}:[0-9a-f:]{2,}/gi, "[IP]")
     .replace(/postgres(ql)?:\/\/\S+/gi, "[접속주소]")
     .slice(0, 120);
   const head = e.message.split("\n")[0].replace(/params:.*/i, "").slice(0, 80);
