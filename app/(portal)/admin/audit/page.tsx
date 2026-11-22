@@ -95,7 +95,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       </form>
 
       <p className="text-sm text-gray-600">총 {total.toLocaleString("ko-KR")}건</p>
-      <div className="overflow-x-auto">
+      <div className="table-card">
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-300 text-left">

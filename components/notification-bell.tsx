@@ -31,7 +31,7 @@ export function NotificationBell({ initial }: { initial: number }) {
     };
   }, []);
   return (
-    <Link href="/notifications" aria-label={unread > 0 ? `알림 ${unread}건` : "알림"} title="알림" className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--ink-soft)] hover:bg-black/5">
+    <Link href="/notifications" aria-label={unread > 0 ? `알림 ${unread}건` : "알림"} title="알림" className="relative inline-flex h-10 w-10 items-center justify-center rounded-md text-[var(--ink-soft)] hover:bg-black/5">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8" />
         <path d="M10.3 20a2 2 0 0 0 3.4 0" />

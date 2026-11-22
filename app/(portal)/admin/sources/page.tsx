@@ -21,7 +21,7 @@ export default async function SourcesPage() {
         바로 수집해 보려면 GitHub → Actions → “위협정보 수집” → Run workflow 를 누르세요.
       </p>
 
-      <section className="overflow-x-auto">
+      <section className="table-card">
         <table className="w-full min-w-[860px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-300 text-left">

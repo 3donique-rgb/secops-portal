@@ -37,7 +37,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
         <button className="rounded bg-gray-900 px-3 py-1.5 text-sm text-white">검색</button>
       </form>
       <p className="text-sm text-gray-600">총 {rows.length.toLocaleString("ko-KR")}개</p>
-      <div className="overflow-x-auto">
+      <div className="table-card">
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-300 text-left">

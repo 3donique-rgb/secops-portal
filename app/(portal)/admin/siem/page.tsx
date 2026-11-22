@@ -35,7 +35,7 @@ export default async function SiemPage() {
 
       <section>
         <h2 className="mb-2 font-semibold">발급된 키</h2>
-        <table className="w-full border-collapse text-sm">
+        <div className="table-card"><table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-300 text-left">
               <th className="py-2 pr-3">이름</th>
@@ -70,7 +70,7 @@ export default async function SiemPage() {
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section className="space-y-2 text-sm">
@@ -81,7 +81,7 @@ Authorization: Bearer <API 키>
 
 예: curl -H "Authorization: Bearer <API 키>" \\
   "https://<포털 주소>/api/siem/indicators?type=ip,domain&format=csv"`}</pre>
-        <table className="w-full border-collapse text-xs">
+        <div className="table-card"><table className="w-full border-collapse text-xs">
           <tbody>
             {[
               ["type", "ip, domain, url, hash, email (쉼표로 여러 개). 생략하면 전체"],
@@ -96,7 +96,7 @@ Authorization: Bearer <API 키>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </section>
     </div>
   );

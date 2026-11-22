@@ -50,7 +50,7 @@ export default async function UsersPage() {
         </ActionForm>
       </section>
 
-      <section className="overflow-x-auto">
+      <section className="table-card">
         <table className="w-full min-w-[860px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-300 text-left">

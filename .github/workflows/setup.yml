@@ -12,6 +12,7 @@ on:
         type: choice
         required: true
         options:
+          - db-update   # DB 표를 최신으로 맞추기 (새 기능을 올린 뒤 한 번)
           - admin       # 최초 관리자 계정 만들기
           - demo        # 가짜 데이터 넣기
           - demo-clear  # 가짜 데이터만 지우기
@@ -30,6 +31,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: DB 표 최신으로 맞추기
+        if: inputs.task == 'db-update'
+        run: npm run db:update
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
       - name: 최초 관리자 만들기
         if: inputs.task == 'admin'
         run: npm run seed:admin

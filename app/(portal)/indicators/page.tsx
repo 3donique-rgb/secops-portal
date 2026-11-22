@@ -2,7 +2,9 @@ import Link from "next/link";
 import { getDb } from "@/db";
 import { parseIndicatorParams, type RawParams } from "@/lib/indicator-params";
 import { INDICATOR_TYPES, listSourceNames, searchIndicators } from "@/lib/indicator-query";
+import { VerdictBadge } from "@/components/verdict-badge";
 import { TYPE_LABEL } from "@/lib/labels";
+import { latestVerdicts } from "@/lib/reputation";
 import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "위협정보 - 보안관제 포털" };
@@ -19,6 +21,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
     searchIndicators(db, filter, { page, pageSize: PAGE_SIZE }),
     listSourceNames(db),
   ]);
+  const verdicts = await latestVerdicts(db, rows.map((r) => r.id));
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
   const pageHref = (p: number) => {
@@ -96,8 +99,8 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
       </form>
 
       <p className="text-sm text-gray-600">총 {total.toLocaleString("ko-KR")}건</p>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[820px] border-collapse text-sm">
+      <div className="table-card">
+        <table className="min-w-[900px]">
           <thead>
             <tr className="border-b border-gray-300 text-left">
               <th className="py-2 pr-3">종류</th>
@@ -106,6 +109,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
               <th className="pr-3">최초 확인</th>
               <th className="pr-3">최종 확인</th>
               <th>상태</th>
+              <th>평판</th>
             </tr>
           </thead>
           <tbody>
@@ -127,11 +131,12 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
                   {r.status === "active" ? "활성" : <span className="text-gray-500">비활성</span>}
                   {r.excluded && <span className="ml-1 rounded bg-yellow-100 px-1 text-xs text-yellow-800">SIEM 제외</span>}
                 </td>
+                <td>{verdicts.has(r.id) ? <VerdictBadge verdict={verdicts.get(r.id)!} /> : <span className="text-[var(--ink-soft)]">-</span>}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-gray-500">
+                <td colSpan={7} className="py-6 text-center text-gray-500">
                   조건에 맞는 위협정보가 없습니다.
                 </td>
               </tr>

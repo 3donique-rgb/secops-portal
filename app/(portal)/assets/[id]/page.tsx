@@ -117,7 +117,7 @@ export default async function AssetDetailPage({ params, searchParams }: { params
               {shown.openPorts.length === 0 ? (
                 <p className="text-[var(--ink-soft)]">열린 포트가 없습니다.</p>
               ) : (
-                <table className="w-full text-sm">
+                <div className="table-card"><table className="w-full text-sm">
                   <thead><tr className="text-left"><th>포트</th><th>서비스</th><th>버전·배너</th></tr></thead>
                   <tbody>
                     {shown.openPorts.map((p) => (
@@ -128,7 +128,7 @@ export default async function AssetDetailPage({ params, searchParams }: { params
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
             {shown.scanLevel >= 4 && (
@@ -137,14 +137,14 @@ export default async function AssetDetailPage({ params, searchParams }: { params
                 {shown.exposedPages.length === 0 ? (
                   <p className="text-[var(--ink-soft)]">확인된 노출 페이지가 없습니다.</p>
                 ) : (
-                  <table className="w-full text-sm">
+                  <div className="table-card"><table className="w-full text-sm">
                     <thead><tr className="text-left"><th>경로</th><th>종류</th><th>응답</th></tr></thead>
                     <tbody>
                       {shown.exposedPages.map((p) => (
                         <tr key={p.path}><td className="break-all font-medium">{p.path}</td><td>{p.kind}</td><td>{p.statusCode}</td></tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 )}
               </div>
             )}
@@ -187,7 +187,7 @@ export default async function AssetDetailPage({ params, searchParams }: { params
                 </ul>
               </div>
             )}
-            <table className="w-full text-sm">
+            <div className="table-card"><table className="w-full text-sm">
               <thead><tr className="text-left"><th>점검일</th><th>상태</th><th>강도</th><th>열린 포트</th><th>노출 페이지</th></tr></thead>
               <tbody>
                 {history.map((h) => (
@@ -200,7 +200,7 @@ export default async function AssetDetailPage({ params, searchParams }: { params
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         </section>
       )}

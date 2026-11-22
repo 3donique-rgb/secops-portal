@@ -320,3 +320,40 @@ export const apiKeys = pgTable("api_keys", {
   lastUsedAt: timestamp({ withTimezone: true }),
   revoked: boolean().notNull().default(false),
 });
+
+// ---------------------------------------------------------------------------
+// 1.7 평판 기록 (VirusTotal 분석 결과·분석가 판정) - 지표마다 이력으로 쌓는다
+// ---------------------------------------------------------------------------
+export const reputationVerdict = pgEnum("reputation_verdict", [
+  "malicious",
+  "suspicious",
+  "harmless",
+  "unknown",
+]);
+
+export const indicatorReputations = pgTable(
+  "indicator_reputations",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    indicatorId: uuid()
+      .notNull()
+      .references(() => indicators.id, { onDelete: "cascade" }),
+    /** manual = 사람이 직접 기록, virustotal = VirusTotal API 조회 */
+    origin: text().notNull().default("manual"),
+    verdict: reputationVerdict().notNull().default("unknown"),
+    /** VirusTotal 분석 엔진 집계 (직접 기록할 때는 비어 있을 수 있다) */
+    vtMalicious: integer(),
+    vtSuspicious: integer(),
+    vtHarmless: integer(),
+    vtUndetected: integer(),
+    /** VirusTotal 커뮤니티 평판 점수 */
+    vtReputation: integer(),
+    note: text(),
+    createdBy: uuid().references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("indicator_reputations_indicator_idx").on(t.indicatorId, t.createdAt),
+    check("indicator_reputations_origin_ck", sql`${t.origin} in ('manual', 'virustotal')`),
+  ],
+);

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Icon, type IconName } from "@/components/icons";
 import { getDb } from "@/db";
 import { getDashboard } from "@/lib/dashboard";
 import { TYPE_LABEL } from "@/lib/labels";
@@ -26,7 +27,7 @@ const TYPE_TONE = ["#0e7c7b", "#2f9a97", "#5fb5b1", "#93cfca", "#c3e3df"];
 
 function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)]">
+    <section className="min-w-0 rounded-xl border border-[var(--line)] bg-[var(--surface)]">
       <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-3">
         <h2 className="text-sm font-semibold">{title}</h2>
         {action}
@@ -65,94 +66,90 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-1">
         <h1 className="text-xl font-bold tracking-tight">대시보드</h1>
         <p className="text-xs text-[var(--ink-soft)]">{fmt(now)} 기준</p>
       </div>
 
       <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl px-5 py-3.5" style={{ background: banner.bg, color: banner.fg }}>
-        <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: banner.fg }} />
+        <Icon name={state === "ok" ? "check" : "alert"} size={18} />
         <span className="font-semibold">{banner.title}</span>
         <span className="text-sm opacity-90">{banner.detail}</span>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr]">
-        <Link href="/indicators" className="group rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 hover:border-[var(--signal)]">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm text-[var(--ink-soft)]">최근 24시간 새로 들어온 위협정보</p>
-              <p className="mt-1 text-5xl font-bold tracking-tight">
-                {n(d.indicators.new24h)}
-                <span className="ml-1.5 text-base font-medium text-[var(--ink-soft)]">건</span>
-              </p>
-            </div>
-            <p className="text-right text-sm text-[var(--ink-soft)]">
-              최근 7일
-              <br />
-              <b className="text-base text-[var(--foreground)]">{n(d.indicators.new7d)}건</b>
-            </p>
-          </div>
-          <div className="mt-6 flex h-32 items-end gap-[3px]" role="img" aria-label={`시간대별 신규 건수, 최대 ${peak}건`}>
-            {d.indicators.hourly.map((v, i) => (
-              <div key={i} title={`${hourLabel(i)} ${n(v)}건`} className="flex-1 rounded-t-sm" style={{ height: `${Math.max(v === 0 ? 3 : 8, (v / peak) * 100)}%`, background: v === 0 ? "var(--line)" : "var(--signal)" }} />
-            ))}
-          </div>
-          <div className="mt-1.5 flex justify-between text-xs text-[var(--ink-soft)]">
-            <span>24시간 전</span>
-            <span>지금</span>
-          </div>
-        </Link>
-
-        <Panel title="현황">
-          <dl className="divide-y divide-[var(--line)] text-sm">
-            {[
-              { label: "활성 위협정보", value: n(d.indicators.active), note: `전체 ${n(d.indicators.total)}건`, href: "/indicators?status=active" },
-              { label: "SIEM에서 제외됨", value: n(d.indicators.excluded), note: "화이트리스트·자산", href: "/indicators?excluded=1" },
-              { label: "등록 자산", value: n(d.assets.total), note: `점검 사용 ${n(d.assets.enabled)}개`, href: "/assets" },
-              { label: "읽지 않은 알림", value: n(d.notifications.unread), note: d.notifications.unread > 0 ? "확인 필요" : "없음", href: "/notifications?filter=unread", hot: d.notifications.unread > 0 },
-            ].map((r) => (
-              <Link key={r.label} href={r.href} className="flex items-center justify-between px-5 py-3 hover:bg-black/[0.03]">
-                <div>
-                  <dt>{r.label}</dt>
-                  <dd className="text-xs text-[var(--ink-soft)]">{r.note}</dd>
-                </div>
-                <span className="text-xl font-semibold" style={r.hot ? { color: "var(--bad)" } : undefined}>
-                  {r.value}
-                </span>
-              </Link>
-            ))}
-          </dl>
-        </Panel>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {(
+          [
+            { icon: "trend", label: "최근 24시간 신규", value: n(d.indicators.new24h), unit: "건", note: `최근 7일 ${n(d.indicators.new7d)}건`, href: "/indicators" },
+            { icon: "shield", label: "활성 위협정보", value: n(d.indicators.active), unit: "건", note: `전체 ${n(d.indicators.total)}건`, href: "/indicators?status=active" },
+            { icon: "server", label: "등록 자산", value: n(d.assets.total), unit: "개", note: `점검 사용 ${n(d.assets.enabled)}개`, href: "/assets" },
+            { icon: "bell", label: "읽지 않은 알림", value: n(d.notifications.unread), unit: "건", note: d.notifications.unread > 0 ? "확인이 필요합니다" : "새 알림 없음", href: "/notifications?filter=unread", hot: d.notifications.unread > 0 },
+          ] as { icon: IconName; label: string; value: string; unit: string; note: string; href: string; hot?: boolean }[]
+        ).map((k) => (
+          <Link key={k.label} href={k.href} className="group flex items-center gap-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--signal)]">
+            <span
+              aria-hidden="true"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-xl"
+              style={k.hot ? { background: "var(--bad-soft)", color: "var(--bad)" } : { background: "var(--signal-soft)", color: "var(--signal)" }}
+            >
+              <Icon name={k.icon} size={22} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm text-[var(--ink-soft)]">{k.label}</span>
+              <span className="block text-2xl leading-tight font-bold tracking-tight" style={k.hot ? { color: "var(--bad)" } : undefined}>
+                {k.value}
+                <span className="ml-1 text-sm font-medium text-[var(--ink-soft)]">{k.unit}</span>
+              </span>
+              <span className="block truncate text-xs text-[var(--ink-soft)]">{k.note}</span>
+            </span>
+          </Link>
+        ))}
       </div>
 
-      <Panel title="활성 위협정보 종류별" action={<span className="text-xs text-[var(--ink-soft)]">합계 {n(typeTotal)}건</span>}>
-        <div className="px-5 py-4">
-          <div className="flex h-3 overflow-hidden rounded-full bg-[var(--line)]">
-            {Object.keys(TYPE_LABEL).map((t, i) => {
-              const v = d.indicators.byType[t] ?? 0;
-              return v > 0 ? <div key={t} style={{ width: `${(v / typeTotal) * 100}%`, background: TYPE_TONE[i % TYPE_TONE.length] }} title={`${TYPE_LABEL[t]} ${n(v)}건`} /> : null;
-            })}
+      <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
+        <Panel title="시간대별 신규 유입 (최근 24시간)" action={<span className="text-xs text-[var(--ink-soft)]">최대 {n(peak)}건/시간</span>}>
+          <div className="px-5 py-4">
+            <div className="flex h-40 items-end gap-[3px]" role="img" aria-label={`시간대별 신규 건수, 최대 ${peak}건`}>
+              {d.indicators.hourly.map((v, i) => (
+                <div key={i} title={`${hourLabel(i)} ${n(v)}건`} className="flex-1 rounded-t-sm" style={{ height: `${Math.max(v === 0 ? 3 : 8, (v / peak) * 100)}%`, background: v === 0 ? "var(--line)" : "var(--signal)" }} />
+              ))}
+            </div>
+            <div className="mt-1.5 flex justify-between text-xs text-[var(--ink-soft)]">
+              <span>24시간 전</span>
+              <span>지금</span>
+            </div>
           </div>
-          <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5">
-            {Object.entries(TYPE_LABEL).map(([t, label], i) => (
-              <li key={t}>
-                <Link href={`/indicators?type=${t}&status=active`} className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-black/[0.04]">
-                  <span className="flex items-center">
-                    <span aria-hidden="true" className="mr-2 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: TYPE_TONE[i % TYPE_TONE.length] }} />
-                    {label}
-                  </span>
-                  <b>{n(d.indicators.byType[t] ?? 0)}</b>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Panel>
+        </Panel>
+
+        <Panel title="활성 위협정보 종류별" action={<span className="text-xs text-[var(--ink-soft)]">합계 {n(typeTotal)}건</span>}>
+          <div className="px-5 py-4">
+            <div className="flex h-3 overflow-hidden rounded-full bg-[var(--line)]">
+              {Object.keys(TYPE_LABEL).map((t, i) => {
+                const v = d.indicators.byType[t] ?? 0;
+                return v > 0 ? <div key={t} style={{ width: `${(v / typeTotal) * 100}%`, background: TYPE_TONE[i % TYPE_TONE.length] }} title={`${TYPE_LABEL[t]} ${n(v)}건`} /> : null;
+              })}
+            </div>
+            <ul className="mt-3 flex flex-col">
+              {Object.entries(TYPE_LABEL).map(([t, label], i) => (
+                <li key={t}>
+                  <Link href={`/indicators?type=${t}&status=active`} className="flex items-center justify-between rounded-md px-2 py-2 text-sm hover:bg-black/[0.04]">
+                    <span className="flex items-center">
+                      <span aria-hidden="true" className="mr-2.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: TYPE_TONE[i % TYPE_TONE.length] }} />
+                      {label}
+                    </span>
+                    <b>{n(d.indicators.byType[t] ?? 0)}</b>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Panel>
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Panel title="수집 상태" action={user.role === "admin" ? <Link href="/admin/sources" className="text-xs text-[var(--signal)] hover:underline">출처 관리</Link> : undefined}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] border-collapse text-sm">
+            <table className="min-w-[480px]">
               <thead>
                 <tr className="text-left text-xs text-[var(--ink-soft)]">
                   <th className="px-5 py-2 font-medium">제공 기관</th>

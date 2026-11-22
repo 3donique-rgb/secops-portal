@@ -25,6 +25,8 @@ export const AUDIT_ACTIONS = [
   "asset_create",
   "asset_update",
   "asset_delete",
+  "reputation_add",
+  "reputation_vt_lookup",
 ] as const;
 
 export type AuditInput = {

@@ -45,7 +45,7 @@ export default async function WhitelistPage() {
         </div>
       </ActionForm>
 
-      <table className="w-full border-collapse text-sm">
+      <div className="table-card"><table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-gray-300 text-left">
             <th className="py-2 pr-3">종류</th>
@@ -78,7 +78,7 @@ export default async function WhitelistPage() {
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

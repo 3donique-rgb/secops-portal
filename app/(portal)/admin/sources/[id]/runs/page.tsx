@@ -23,7 +23,7 @@ export default async function RunsPage({ params }: { params: Promise<{ id: strin
       </Link>
       <h1 className="text-xl font-bold">{s.name} 수집 이력</h1>
       <p className="text-sm text-gray-600">최근 100회까지 표시합니다. 마지막 성공: {s.lastSuccessAt ? fmt(s.lastSuccessAt) : "없음"}</p>
-      <table className="w-full border-collapse text-sm">
+      <div className="table-card"><table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-gray-300 text-left">
             <th className="py-2 pr-3">시작 시각 (KST)</th>
@@ -49,7 +49,7 @@ export default async function RunsPage({ params }: { params: Promise<{ id: strin
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
