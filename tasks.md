@@ -15,7 +15,7 @@
 - [x] 1.1 Drizzle 설정, users·user_allowed_ips 표 정의 + 마이그레이션
 - [x] 1.2 sources·collect_runs 표 정의
 - [x] 1.3 indicators·indicator_sources 표 정의(고유 조건 포함)
-- [ ] 1.4 whitelist·assets 표 정의
+- [x] 1.4 whitelist·assets 표 정의
 - [ ] 1.5 scan_results·notifications 표 정의
 - [ ] 1.6 audit_logs·api_keys 표 정의
 - [ ] 1.7 마이그레이션 실행, 표가 모두 생겼는지 확인

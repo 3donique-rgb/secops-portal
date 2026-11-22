@@ -171,3 +171,52 @@ export const indicatorSources = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// 1.4 화이트리스트·자산
+// ---------------------------------------------------------------------------
+export const whitelistType = pgEnum("whitelist_type", [
+  "ip",
+  "cidr",
+  "domain",
+]);
+
+export const whitelist = pgTable(
+  "whitelist",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    type: whitelistType().notNull(),
+    value: text().notNull(),
+    reason: text(),
+    createdBy: uuid().references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [unique("whitelist_type_value_uq").on(t.type, t.value)],
+);
+
+export const assets = pgTable(
+  "assets",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    name: text().notNull(),
+    /** 도메인 또는 IP */
+    target: text().notNull(),
+    owner: text(),
+    department: text(),
+    /** 중요도 1~5 */
+    importance: smallint().notNull().default(3),
+    /** 점검 강도 1~5 (기본 3) */
+    scanLevel: smallint().notNull().default(3),
+    /** 점검 허가 확인. 등록하려면 반드시 true [고정] */
+    scanPermitted: boolean().notNull(),
+    enabled: boolean().notNull().default(true),
+    memo: text(),
+  },
+  (t) => [
+    check("assets_importance_ck", sql`${t.importance} between 1 and 5`),
+    check("assets_scan_level_ck", sql`${t.scanLevel} between 1 and 5`),
+    check("assets_scan_permitted_ck", sql`${t.scanPermitted} = true`),
+    index("assets_target_idx").on(t.target),
+  ],
+);
