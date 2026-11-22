@@ -114,6 +114,6 @@ export async function listRuns(db: Db, sourceId: string, limit = 100) {
 
 /** 등록 화면에서 한 번에 채워 볼 수 있는 예시. 접속 가능 여부와 이용 조건은 등록하는 사람이 확인해야 한다. */
 export const SOURCE_PRESETS = [
-  { name: "abuse.ch Feodo Tracker (예시)", kind: "api", url: "https://feodotracker.abuse.ch/downloads/ipblocklist.txt", config: { format: "text", mode: "lines" } },
-  { name: "abuse.ch URLhaus (예시)", kind: "api", url: "https://urlhaus.abuse.ch/downloads/text_online/", config: { format: "text", mode: "lines" } },
+  { name: "abuse.ch Feodo Tracker (봇넷 C2 IP)", kind: "api", url: "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt", config: { format: "text", mode: "lines" } },
+  // URLhaus 는 현재 무료 계정의 Auth-Key 가 있어야 내려받을 수 있다(주소에 키가 들어가는 방식). 키를 받은 뒤 직접 등록한다.
 ] as const;
