@@ -8,7 +8,7 @@
 - [x] 0.1 GitHub 비공개 저장소 연결, prd.md·design.md·tasks.md·rules.md·CHANGELOG.md 올리기
 - [x] 0.2 Next.js(TypeScript, Tailwind) 프로젝트 생성, 폴더 구조 만들기(design.md 2절)
 - [x] 0.3 Supabase 프로젝트 만들고 DATABASE_URL 받기 (사용자가 직접 만들고 값은 Vercel/.env에만 넣음)
-- [ ] 0.4 .env.example 만들기, .gitignore에 .env 확인
+- [x] 0.4 .env.example 만들기, .gitignore에 .env 확인
 - [ ] 0.5 Vercel에 저장소 연결, 빈 화면 첫 배포 확인
 
 ## 1. 데이터베이스 (1차)
