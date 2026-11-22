@@ -18,7 +18,7 @@
 - [x] 1.4 whitelist·assets 표 정의
 - [x] 1.5 scan_results·notifications 표 정의
 - [x] 1.6 audit_logs·api_keys 표 정의
-- [ ] 1.7 마이그레이션 실행, 표가 모두 생겼는지 확인
+- [x] 1.7 마이그레이션 실행, 표가 모두 생겼는지 확인 (Supabase SQL Editor에서 실행, 12개 표·RLS 켜짐 확인)
 - [ ] 1.8 개발용 가짜 데이터 스크립트(seed-demo): 출처 3개, 지표 50건, 자산 10개
 
 ## 2. 핵심 기능 (화면 없이) (1차)
