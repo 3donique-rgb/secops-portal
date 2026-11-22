@@ -5,6 +5,7 @@
  */
 import { clearDemo, seedDemo } from "../lib/seed";
 import { connect } from "./db";
+import { describeError } from "../lib/error-info";
 
 async function main() {
   const { db, close } = connect();
@@ -24,6 +25,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("실패:", e instanceof Error ? e.message : "알 수 없는 오류");
+  console.error("실패:", describeError(e));
   process.exit(1);
 });
