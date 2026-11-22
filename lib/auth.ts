@@ -4,14 +4,15 @@
  * 이 파일은 단계별로 채워 간다.
  *  2.9  비밀번호 해시·검증, 5회 잠금
  *  2.10 OTP 비밀키 생성·QR·코드 검증   (구글 오센티케이터 호환 TOTP)
- *  2.11 허용 IP 판정(관리자 예외)
+ *  2.11 허용 IP 판정(관리자 예외)      (접속 IP 추출 포함)
  *  2.12 임시 쿠키·세션 쿠키, 권한 확인
  */
 import { hash, verify } from "@node-rs/argon2";
 import { eq, sql } from "drizzle-orm";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import QRCode from "qrcode";
-import { users } from "../db/schema";
+import { userAllowedIps, users } from "../db/schema";
+import { cleanClientIp, ipInParsedCidr, parseCidr, parseIp } from "./cidr";
 import { decryptSecret, encryptSecret } from "./crypto";
 import type { Db } from "./indicators";
 
@@ -285,4 +286,56 @@ export async function resetUserOtp(db: Db, userId: string): Promise<void> {
     .update(users)
     .set({ otpSecretEnc: null, otpEnabled: false })
     .where(eq(users.id, userId));
+}
+
+// ---------------------------------------------------------------------------
+// 허용 IP 판정
+// ---------------------------------------------------------------------------
+
+/**
+ * 요청 헤더에서 접속자 IP를 꺼낸다. Vercel이 넘기는 x-forwarded-for의 맨 앞 값을 쓰고,
+ * 없으면 x-real-ip를 쓴다. 올바른 IP가 아니면 null.
+ */
+export function getClientIp(headers: {
+  get(name: string): string | null;
+}): string | null {
+  const forwarded = headers.get("x-forwarded-for");
+  const first = forwarded?.split(",")[0];
+  return cleanClientIp(first) ?? cleanClientIp(headers.get("x-real-ip"));
+}
+
+export type IpCheckResult =
+  | { allowed: true; reason: "admin" | "listed" }
+  | { allowed: false; reason: "no_ip" | "not_registered" | "not_listed" };
+
+/**
+ * 로그인 허용 IP 확인.
+ * - 관리자(role = admin)는 제한 없이 통과한다 (OTP는 별도로 필수).
+ * - 그 밖의 계정은 접속 IP가 등록된 허용 IP(단일 IP 또는 대역) 중 하나에 속해야 한다.
+ * - 등록된 IP가 하나도 없는 계정은 로그인할 수 없다.
+ */
+export async function checkAllowedIp(
+  db: Db,
+  user: { id: string; role: "admin" | "viewer" },
+  clientIp: string | null,
+): Promise<IpCheckResult> {
+  if (user.role === "admin") return { allowed: true, reason: "admin" };
+
+  const ip = cleanClientIp(clientIp);
+  const parsed = ip ? parseIp(ip) : null;
+  if (!parsed) return { allowed: false, reason: "no_ip" };
+
+  const rows = await db
+    .select({ cidr: userAllowedIps.cidr })
+    .from(userAllowedIps)
+    .where(eq(userAllowedIps.userId, user.id));
+  if (rows.length === 0) return { allowed: false, reason: "not_registered" };
+
+  const hit = rows.some((r) => {
+    const c = parseCidr(r.cidr);
+    return c !== null && ipInParsedCidr(parsed, c);
+  });
+  return hit
+    ? { allowed: true, reason: "listed" }
+    : { allowed: false, reason: "not_listed" };
 }

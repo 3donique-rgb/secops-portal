@@ -138,3 +138,23 @@ export function ipInCidr(ip: string, cidr: string): boolean {
   if (!a || !c) return false;
   return ipInParsedCidr(a, c);
 }
+
+/**
+ * 접속자 IP 문자열을 비교 가능한 형태로 정리한다.
+ * - 포트(1.2.3.4:5678, [::1]:443)와 대괄호 제거
+ * - IPv4 주소가 IPv6 형태로 들어온 경우(::ffff:1.2.3.4)는 IPv4로 변환
+ * 올바른 IP가 아니면 null.
+ */
+export function cleanClientIp(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let text = raw.trim();
+  const bracket = text.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracket) text = bracket[1];
+  else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(text)) text = text.replace(/:\d+$/, "");
+  const ip = parseIp(text);
+  if (!ip) return null;
+  if (ip.version === 6 && ip.value >> B(32) === B(0xffff)) {
+    return formatIp(ip.value & B(0xffffffff), 4);
+  }
+  return formatIp(ip.value, ip.version);
+}

@@ -1,13 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { users } from "../db/schema";
+import { userAllowedIps, users } from "../db/schema";
 import { generateSync } from "otplib";
 import {
   MAX_FAILED_ATTEMPTS,
   beginOtpSetup,
   buildOtpAuthUri,
+  checkAllowedIp,
   confirmOtpSetup,
   createOtpSecret,
+  getClientIp,
   hashPassword,
   recordFailedAttempt,
   renderQrDataUrl,
@@ -46,6 +48,15 @@ import { createTestDb, resetData } from "./helpers/test-db";
  * 17. 로그인 OTP 확인               → 맞으면 ok, 틀리면 invalid + 실패 횟수 증가, 5회째 잠김
  * 18. OTP 미등록 / 잠긴 계정        → not_enrolled / locked
  * 19. 관리자 OTP 초기화             → 비밀키 삭제, 다시 등록 가능
+ *
+ * 허용 IP (2.11)
+ * 20. 관리자                        → IP·등록 여부와 상관없이 통과
+ * 21. 일반 계정 + 등록된 IP 없음     → 거부 (not_registered)
+ * 22. 단일 IP 일치 / 불일치          → 통과 / 거부
+ * 23. 대역(CIDR) 안 / 밖             → 통과 / 거부, IPv6 대역·IPv4 매핑 주소 지원
+ * 24. 접속 IP를 알 수 없음           → 일반 계정은 거부 (no_ip)
+ * 25. 다른 계정에 등록된 IP          → 적용되지 않음
+ * 26. 헤더에서 접속 IP 추출          → x-forwarded-for 맨 앞, 포트·대괄호 제거, 잘못된 값은 x-real-ip로 대체
  */
 let ctx: Awaited<ReturnType<typeof createTestDb>>;
 const PASSWORD = "correct-horse-battery";
@@ -275,5 +286,70 @@ describe("OTP (구글 오센티케이터 호환 TOTP)", () => {
     expect(await verifyUserOtp(ctx.db, u.id, generateSync({ secret }), { encKey })).toEqual({ ok: false, reason: "not_enrolled" });
     const again = await beginOtpSetup(ctx.db, u.id, encKey);
     expect(again.secret).not.toBe(secret);
+  });
+});
+
+describe("허용 IP 판정", () => {
+  async function addIp(userId: string, cidr: string) {
+    await ctx.db.insert(userAllowedIps).values({ userId, cidr });
+  }
+  const viewer = (id: string) => ({ id, role: "viewer" as const });
+
+  it("관리자는 IP 제한 없이 통과한다 (IP를 알 수 없어도)", async () => {
+    const u = await makeUser();
+    for (const ip of ["8.8.8.8", null, "garbage"]) {
+      expect(await checkAllowedIp(ctx.db, { id: u.id, role: "admin" }, ip)).toEqual({ allowed: true, reason: "admin" });
+    }
+  });
+
+  it("등록된 IP가 없는 일반 계정은 로그인할 수 없다", async () => {
+    const u = await makeUser();
+    expect(await checkAllowedIp(ctx.db, viewer(u.id), "1.2.3.4")).toEqual({ allowed: false, reason: "not_registered" });
+  });
+
+  it("단일 IP는 일치할 때만 통과한다", async () => {
+    const u = await makeUser();
+    await addIp(u.id, "1.2.3.4/32");
+    expect((await checkAllowedIp(ctx.db, viewer(u.id), "1.2.3.4")).allowed).toBe(true);
+    expect(await checkAllowedIp(ctx.db, viewer(u.id), "1.2.3.5")).toEqual({ allowed: false, reason: "not_listed" });
+  });
+
+  it("대역(CIDR)과 IPv6, IPv4 매핑 주소를 지원한다", async () => {
+    const u = await makeUser();
+    await addIp(u.id, "10.0.0.0/24");
+    await addIp(u.id, "2001:db8::/32");
+    await addIp(u.id, "203.0.113.9");
+    const allowed = async (ip: string) => (await checkAllowedIp(ctx.db, viewer(u.id), ip)).allowed;
+    expect(await allowed("10.0.0.200")).toBe(true);
+    expect(await allowed("10.0.1.1")).toBe(false);
+    expect(await allowed("2001:db8:1::5")).toBe(true);
+    expect(await allowed("2001:db9::1")).toBe(false);
+    expect(await allowed("::ffff:203.0.113.9")).toBe(true);
+  });
+
+  it("접속 IP를 알 수 없으면 일반 계정은 거부한다", async () => {
+    const u = await makeUser();
+    await addIp(u.id, "0.0.0.0/0");
+    for (const ip of [null, "", "not-an-ip"]) {
+      expect(await checkAllowedIp(ctx.db, viewer(u.id), ip)).toEqual({ allowed: false, reason: "no_ip" });
+    }
+  });
+
+  it("다른 계정에 등록된 IP는 적용되지 않는다", async () => {
+    const a = await makeUser("userA");
+    const b = await makeUser("userB");
+    await addIp(a.id, "1.2.3.4/32");
+    expect((await checkAllowedIp(ctx.db, viewer(b.id), "1.2.3.4")).allowed).toBe(false);
+  });
+
+  it("요청 헤더에서 접속 IP를 꺼낸다", () => {
+    const h = (o: Record<string, string>) => new Headers(o);
+    expect(getClientIp(h({ "x-forwarded-for": "9.9.9.9, 10.0.0.1" }))).toBe("9.9.9.9");
+    expect(getClientIp(h({ "x-forwarded-for": "9.9.9.9:5555" }))).toBe("9.9.9.9");
+    expect(getClientIp(h({ "x-forwarded-for": "[2001:db8::1]:443" }))).toBe("2001:db8::1");
+    expect(getClientIp(h({ "x-forwarded-for": "::ffff:1.2.3.4" }))).toBe("1.2.3.4");
+    expect(getClientIp(h({ "x-forwarded-for": "garbage", "x-real-ip": "7.7.7.7" }))).toBe("7.7.7.7");
+    expect(getClientIp(h({ "x-real-ip": "7.7.7.7" }))).toBe("7.7.7.7");
+    expect(getClientIp(h({}))).toBeNull();
   });
 });
