@@ -290,3 +290,33 @@ export const notifications = pgTable(
   },
   (t) => [index("notifications_read_occurred_idx").on(t.read, t.occurredAt)],
 );
+
+// ---------------------------------------------------------------------------
+// 1.6 감사 로그·SIEM API 키
+// ---------------------------------------------------------------------------
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    /** 로그인 실패처럼 사용자를 특정할 수 없는 경우는 비어 있다 */
+    userId: uuid().references(() => users.id, { onDelete: "set null" }),
+    action: text().notNull(),
+    target: text(),
+    detail: jsonb().$type<Record<string, unknown>>(),
+    ip: text(),
+    occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("audit_logs_occurred_idx").on(t.occurredAt)],
+);
+
+export const apiKeys = pgTable("api_keys", {
+  id: id(),
+  createdAt: createdAt(),
+  name: text().notNull(),
+  /** 키 원문은 저장하지 않고 해시만 저장한다 [고정] */
+  keyHash: text().notNull().unique(),
+  createdBy: uuid().references(() => users.id, { onDelete: "set null" }),
+  lastUsedAt: timestamp({ withTimezone: true }),
+  revoked: boolean().notNull().default(false),
+});
