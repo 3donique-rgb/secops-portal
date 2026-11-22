@@ -22,8 +22,8 @@
 - [ ] 1.8 개발용 가짜 데이터 스크립트(seed-demo): 출처 3개, 지표 50건, 자산 10개
 
 ## 2. 핵심 기능 (화면 없이) (1차)
-- [ ] 2.1 lib/normalize.ts: 지표 정규화·종류 판별
-- [ ] 2.2 tests: normalize 시험 사례 6가지 이상(방어 표기, 해시 길이, 사설 IP 등) 통과
+- [x] 2.1 lib/normalize.ts: 지표 정규화·종류 판별
+- [x] 2.2 tests: normalize 시험 사례 6가지 이상(방어 표기, 해시 길이, 사설 IP 등) 통과
 - [ ] 2.3 lib/indicators.ts: 저장·중복 병합(출처 필수)
 - [ ] 2.4 lib/indicators.ts: 만료 처리·비활성 복귀
 - [ ] 2.5 tests: 병합·만료·복귀 시험 사례 통과
