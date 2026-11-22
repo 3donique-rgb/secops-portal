@@ -1,16 +1,26 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { users } from "../db/schema";
+import { generateSync } from "otplib";
 import {
   MAX_FAILED_ATTEMPTS,
+  beginOtpSetup,
+  buildOtpAuthUri,
+  confirmOtpSetup,
+  createOtpSecret,
   hashPassword,
   recordFailedAttempt,
+  renderQrDataUrl,
   resetFailedCount,
+  resetUserOtp,
   unlockUser,
   validatePassword,
   verifyCredentials,
+  verifyOtpCode,
   verifyPassword,
+  verifyUserOtp,
 } from "../lib/auth";
+import { decryptSecret, generateEncryptionKey } from "../lib/crypto";
 import { createTestDb, resetData } from "./helpers/test-db";
 
 /**
@@ -26,6 +36,16 @@ import { createTestDb, resetData } from "./helpers/test-db";
  *  9. resetFailedCount              → 0으로, 마지막 로그인 시각 기록
  * 10. 관리자가 잠금 해제            → 다시 로그인 가능
  * 11. 동시에 5번 실패               → 횟수가 빠지지 않고 잠김
+ *
+ * OTP (2.10)
+ * 12. 표준 시험값(RFC 6238) 시각 59초 → 코드 287082 (구글 오센티케이터와 같은 계산)
+ * 13. 현재·앞뒤 30초 코드           → 통과, 90초 전 코드 → 실패, 숫자 6자리가 아님 → 실패
+ * 14. 등록 시작                     → 비밀키는 암호화되어 저장, QR·otpauth 주소 생성
+ * 15. 이미 등록된 계정의 재등록      → 거부 (관리자가 초기화해야 함)
+ * 16. 등록 확인                     → 맞는 코드만 사용 시작, 틀리면 계속 미사용
+ * 17. 로그인 OTP 확인               → 맞으면 ok, 틀리면 invalid + 실패 횟수 증가, 5회째 잠김
+ * 18. OTP 미등록 / 잠긴 계정        → not_enrolled / locked
+ * 19. 관리자 OTP 초기화             → 비밀키 삭제, 다시 등록 가능
  */
 let ctx: Awaited<ReturnType<typeof createTestDb>>;
 const PASSWORD = "correct-horse-battery";
@@ -144,5 +164,116 @@ describe("verifyCredentials (1차 인증과 5회 잠금)", () => {
       Array.from({ length: MAX_FAILED_ATTEMPTS }, () => recordFailedAttempt(ctx.db, u.id)),
     );
     expect(await getUser(u.id)).toMatchObject({ failedCount: MAX_FAILED_ATTEMPTS, locked: true });
+  });
+});
+
+describe("OTP (구글 오센티케이터 호환 TOTP)", () => {
+  const encKey = generateEncryptionKey();
+  // RFC 6238 부록의 시험용 비밀키("12345678901234567890"의 base32)
+  const RFC_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+  it("표준 시험값과 같은 코드를 계산한다", () => {
+    expect(verifyOtpCode(RFC_SECRET, "287082", new Date(59 * 1000))).toBe(true);
+    expect(verifyOtpCode(RFC_SECRET, "287083", new Date(59 * 1000))).toBe(false);
+  });
+
+  it("앞뒤 30초는 허용하고 그보다 오래된 코드와 형식이 틀린 입력은 거부한다", () => {
+    const secret = createOtpSecret();
+    const t = new Date("2026-11-22T12:00:00Z");
+    const code = (offsetSec: number) =>
+      generateSync({ secret, epoch: Math.floor(t.getTime() / 1000) + offsetSec });
+    expect(verifyOtpCode(secret, code(0), t)).toBe(true);
+    expect(verifyOtpCode(secret, code(-30), t)).toBe(true);
+    expect(verifyOtpCode(secret, code(30), t)).toBe(true);
+    expect(verifyOtpCode(secret, code(-90), t)).toBe(false);
+    expect(verifyOtpCode(secret, code(90), t)).toBe(false);
+    const c = code(0);
+    expect(verifyOtpCode(secret, `${c.slice(0, 3)} ${c.slice(3)}`, t)).toBe(true); // 공백 허용
+    for (const bad of ["", "12345", "1234567", "abcdef", "12 34 5"]) {
+      expect(verifyOtpCode(secret, bad, t), bad).toBe(false);
+    }
+  });
+
+  it("otpauth 주소와 QR 이미지를 만든다", async () => {
+    const uri = buildOtpAuthUri("JBSWY3DPEHPK3PXP", "analyst1");
+    expect(uri.startsWith("otpauth://totp/")).toBe(true);
+    expect(uri).toContain("secret=JBSWY3DPEHPK3PXP");
+    expect(uri).toContain("issuer=SecOps");
+    expect(await renderQrDataUrl(uri)).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("등록을 시작하면 비밀키가 암호화되어 저장된다", async () => {
+    const u = await makeUser();
+    const setup = await beginOtpSetup(ctx.db, u.id, encKey);
+    const row = await getUser(u.id);
+    expect(row.otpEnabled).toBe(false);
+    expect(row.otpSecretEnc).not.toBeNull();
+    expect(row.otpSecretEnc).not.toContain(setup.secret);
+    expect(decryptSecret(row.otpSecretEnc!, encKey)).toBe(setup.secret);
+    expect(setup.uri).toContain(setup.secret);
+    expect(setup.qrDataUrl.startsWith("data:image/png")).toBe(true);
+  });
+
+  it("앱의 코드가 맞아야 등록이 완료되고, 이미 등록된 계정은 다시 등록할 수 없다", async () => {
+    const u = await makeUser();
+    const { secret } = await beginOtpSetup(ctx.db, u.id, encKey);
+    expect(await confirmOtpSetup(ctx.db, u.id, "000000", { encKey })).toBe(false);
+    expect((await getUser(u.id)).otpEnabled).toBe(false);
+
+    expect(await confirmOtpSetup(ctx.db, u.id, generateSync({ secret }), { encKey })).toBe(true);
+    expect((await getUser(u.id)).otpEnabled).toBe(true);
+
+    await expect(beginOtpSetup(ctx.db, u.id, encKey)).rejects.toThrow("이미 OTP");
+    // 이미 사용 중인 계정에는 확인 호출이 다시 먹히지 않는다
+    expect(await confirmOtpSetup(ctx.db, u.id, generateSync({ secret }), { encKey })).toBe(false);
+  });
+
+  async function enrolledUser() {
+    const u = await makeUser();
+    const { secret } = await beginOtpSetup(ctx.db, u.id, encKey);
+    await confirmOtpSetup(ctx.db, u.id, generateSync({ secret }), { encKey });
+    return { u, secret };
+  }
+
+  it("로그인 OTP: 맞는 코드는 통과, 틀리면 실패 횟수가 늘고 5회째에 잠긴다", async () => {
+    const { u, secret } = await enrolledUser();
+    expect(await verifyUserOtp(ctx.db, u.id, generateSync({ secret }), { encKey })).toEqual({ ok: true });
+    expect((await getUser(u.id)).failedCount).toBe(0);
+
+    for (let i = 1; i < MAX_FAILED_ATTEMPTS; i++) {
+      expect(await verifyUserOtp(ctx.db, u.id, "000000", { encKey })).toEqual({ ok: false, reason: "invalid" });
+      expect((await getUser(u.id)).failedCount).toBe(i);
+    }
+    expect(await verifyUserOtp(ctx.db, u.id, "000000", { encKey })).toEqual({ ok: false, reason: "locked" });
+    expect((await getUser(u.id)).locked).toBe(true);
+    // 잠긴 뒤에는 맞는 코드도 거부
+    expect(await verifyUserOtp(ctx.db, u.id, generateSync({ secret }), { encKey })).toEqual({ ok: false, reason: "locked" });
+  });
+
+  it("비밀번호 실패와 OTP 실패는 같은 횟수에 합산된다", async () => {
+    const { u } = await enrolledUser();
+    await verifyCredentials(ctx.db, "analyst1", "wrong-password");
+    await verifyCredentials(ctx.db, "analyst1", "wrong-password");
+    await verifyUserOtp(ctx.db, u.id, "000000", { encKey });
+    await verifyUserOtp(ctx.db, u.id, "000000", { encKey });
+    expect((await getUser(u.id)).failedCount).toBe(4);
+    await verifyUserOtp(ctx.db, u.id, "000000", { encKey });
+    expect((await getUser(u.id)).locked).toBe(true);
+  });
+
+  it("OTP를 등록하지 않은 계정은 not_enrolled다", async () => {
+    const u = await makeUser();
+    expect(await verifyUserOtp(ctx.db, u.id, "123456", { encKey })).toEqual({ ok: false, reason: "not_enrolled" });
+    expect((await getUser(u.id)).failedCount).toBe(0);
+  });
+
+  it("관리자가 OTP를 초기화하면 비밀키가 지워지고 다시 등록할 수 있다", async () => {
+    const { u, secret } = await enrolledUser();
+    await resetUserOtp(ctx.db, u.id);
+    const row = await getUser(u.id);
+    expect(row).toMatchObject({ otpSecretEnc: null, otpEnabled: false });
+    expect(await verifyUserOtp(ctx.db, u.id, generateSync({ secret }), { encKey })).toEqual({ ok: false, reason: "not_enrolled" });
+    const again = await beginOtpSetup(ctx.db, u.id, encKey);
+    expect(again.secret).not.toBe(secret);
   });
 });

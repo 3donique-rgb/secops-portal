@@ -2,14 +2,17 @@
  * 로그인 판정 [고정] - design.md 4.8
  *
  * 이 파일은 단계별로 채워 간다.
- *  2.9  비밀번호 해시·검증, 5회 잠금   (이 부분)
- *  2.10 OTP 비밀키 생성·QR·코드 검증
+ *  2.9  비밀번호 해시·검증, 5회 잠금
+ *  2.10 OTP 비밀키 생성·QR·코드 검증   (구글 오센티케이터 호환 TOTP)
  *  2.11 허용 IP 판정(관리자 예외)
  *  2.12 임시 쿠키·세션 쿠키, 권한 확인
  */
 import { hash, verify } from "@node-rs/argon2";
 import { eq, sql } from "drizzle-orm";
+import { generateSecret, generateURI, verifySync } from "otplib";
+import QRCode from "qrcode";
 import { users } from "../db/schema";
+import { decryptSecret, encryptSecret } from "./crypto";
 import type { Db } from "./indicators";
 
 /** 로그인 실패가 이 횟수에 이르면 계정이 잠긴다. */
@@ -140,5 +143,146 @@ export async function unlockUser(db: Db, userId: string): Promise<void> {
   await db
     .update(users)
     .set({ locked: false, failedCount: 0 })
+    .where(eq(users.id, userId));
+}
+
+// ---------------------------------------------------------------------------
+// OTP (구글 오센티케이터 호환 TOTP: 6자리, 30초 주기, SHA-1)
+// ---------------------------------------------------------------------------
+
+/** 오센티케이터 앱에 표시되는 서비스 이름 */
+export const OTP_ISSUER = "SecOps Portal";
+/** 입력한 코드를 앞뒤 30초까지 허용한다 (휴대폰과 서버의 시계 차이 대비) */
+export const OTP_TOLERANCE_SECONDS = 30;
+
+/** 새 OTP 비밀키(base32)를 만든다. */
+export function createOtpSecret(): string {
+  return generateSecret();
+}
+
+/** 오센티케이터 앱이 읽는 otpauth:// 주소를 만든다. QR 코드에 담긴다. */
+export function buildOtpAuthUri(secret: string, accountName: string): string {
+  return generateURI({ issuer: OTP_ISSUER, label: accountName, secret });
+}
+
+/** otpauth 주소를 화면에 표시할 QR 이미지(data URL)로 바꾼다. */
+export function renderQrDataUrl(otpAuthUri: string): Promise<string> {
+  return QRCode.toDataURL(otpAuthUri, { margin: 1, width: 240 });
+}
+
+/** 6자리 코드가 맞는지. 숫자 6자리가 아니면 계산하지 않고 false. */
+export function verifyOtpCode(
+  secret: string,
+  token: string,
+  now: Date = new Date(),
+): boolean {
+  const code = token.replace(/\s/g, "");
+  if (!/^\d{6}$/.test(code)) return false;
+  try {
+    return verifySync({
+      secret,
+      token: code,
+      epoch: Math.floor(now.getTime() / 1000),
+      epochTolerance: OTP_TOLERANCE_SECONDS,
+    }).valid;
+  } catch {
+    return false;
+  }
+}
+
+export type OtpSetup = {
+  /** 앱에 직접 입력할 때 쓰는 비밀키 (화면에 한 번만 보여 준다) */
+  secret: string;
+  uri: string;
+  qrDataUrl: string;
+};
+
+/**
+ * 최초 OTP 등록을 시작한다. 새 비밀키를 만들어 암호화해 저장하고(아직 사용 전 상태) QR을 돌려준다.
+ * 이미 등록된 계정은 거부한다 — 비밀번호만 아는 사람이 OTP를 바꿔치기하지 못하도록,
+ * 다시 등록하려면 관리자가 먼저 OTP를 초기화해야 한다.
+ */
+export async function beginOtpSetup(
+  db: Db,
+  userId: string,
+  encKey?: string,
+): Promise<OtpSetup> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) throw new Error("사용자를 찾을 수 없습니다.");
+  if (user.otpEnabled) {
+    throw new Error("이미 OTP가 등록된 계정입니다. 관리자에게 초기화를 요청하세요.");
+  }
+  const secret = createOtpSecret();
+  await db
+    .update(users)
+    .set({ otpSecretEnc: encryptSecret(secret, encKey) })
+    .where(eq(users.id, userId));
+  const uri = buildOtpAuthUri(secret, user.username);
+  return { secret, uri, qrDataUrl: await renderQrDataUrl(uri) };
+}
+
+/** 앱에 표시된 코드를 입력받아 맞으면 OTP 등록을 완료한다(사용 시작). */
+export async function confirmOtpSetup(
+  db: Db,
+  userId: string,
+  token: string,
+  opts: { now?: Date; encKey?: string } = {},
+): Promise<boolean> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || user.otpEnabled || !user.otpSecretEnc) return false;
+  let secret: string;
+  try {
+    secret = decryptSecret(user.otpSecretEnc, opts.encKey);
+  } catch {
+    return false;
+  }
+  if (!verifyOtpCode(secret, token, opts.now)) return false;
+  await db.update(users).set({ otpEnabled: true }).where(eq(users.id, userId));
+  return true;
+}
+
+export type OtpResult =
+  | { ok: true }
+  /** invalid: 코드 불일치, locked: 실패 누적으로 계정이 잠김(또는 이미 잠김), not_enrolled: OTP 미등록 */
+  | { ok: false; reason: "invalid" | "locked" | "not_enrolled" };
+
+/**
+ * 로그인 2차 인증: 등록된 계정의 OTP 코드를 확인한다.
+ * 틀리면 비밀번호 실패와 같은 횟수에 합산하고, 5회가 되면 계정을 잠근다.
+ * (6자리 숫자를 무작위로 대입하는 공격을 막기 위해서다.)
+ * 성공해도 실패 횟수는 여기서 초기화하지 않는다 → 호출한 쪽에서 resetFailedCount.
+ */
+export async function verifyUserOtp(
+  db: Db,
+  userId: string,
+  token: string,
+  opts: { now?: Date; encKey?: string } = {},
+): Promise<OtpResult> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return { ok: false, reason: "invalid" };
+  if (user.locked) return { ok: false, reason: "locked" };
+  if (!user.otpEnabled || !user.otpSecretEnc) {
+    return { ok: false, reason: "not_enrolled" };
+  }
+  let matches = false;
+  try {
+    matches = verifyOtpCode(
+      decryptSecret(user.otpSecretEnc, opts.encKey),
+      token,
+      opts.now,
+    );
+  } catch {
+    matches = false;
+  }
+  if (matches) return { ok: true };
+  const nowLocked = await recordFailedAttempt(db, userId);
+  return { ok: false, reason: nowLocked ? "locked" : "invalid" };
+}
+
+/** 관리자가 계정의 OTP를 초기화한다. 다음 로그인 때 다시 등록해야 한다. */
+export async function resetUserOtp(db: Db, userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ otpSecretEnc: null, otpEnabled: false })
     .where(eq(users.id, userId));
 }
