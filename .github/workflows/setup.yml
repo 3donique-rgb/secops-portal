@@ -1,0 +1,49 @@
+# 초기 설정: 최초 관리자 계정 만들기, 개발용 가짜 데이터 넣기/지우기
+# 사용법: GitHub 저장소 → Actions → "초기 설정" → Run workflow → 작업 선택
+# 필요한 값은 GitHub 저장소의 Secrets에 넣어 둔다 (이 파일에는 값이 없다):
+#   DATABASE_URL (Supabase Session pooler 주소), INITIAL_ADMIN_USERNAME, INITIAL_ADMIN_PASSWORD
+name: 초기 설정
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "실행할 작업"
+        type: choice
+        required: true
+        options:
+          - admin       # 최초 관리자 계정 만들기
+          - demo        # 가짜 데이터 넣기
+          - demo-clear  # 가짜 데이터만 지우기
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 최초 관리자 만들기
+        if: inputs.task == 'admin'
+        run: npm run seed:admin
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          INITIAL_ADMIN_USERNAME: ${{ secrets.INITIAL_ADMIN_USERNAME }}
+          INITIAL_ADMIN_PASSWORD: ${{ secrets.INITIAL_ADMIN_PASSWORD }}
+      - name: 가짜 데이터 넣기
+        if: inputs.task == 'demo'
+        run: npm run seed:demo
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: 가짜 데이터 지우기
+        if: inputs.task == 'demo-clear'
+        run: npm run seed:demo -- --clear
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
