@@ -29,6 +29,7 @@
 │  └─ cleanup.yml        # 매일 만료·보관기간 정리
 ├─ db/
 │  ├─ schema.ts          # 표 정의 [고정]
+│  ├─ index.ts           # DB 연결
 │  └─ migrations/
 ├─ lib/                  # 핵심 기능 (화면과 분리, 테스트 대상)
 │  ├─ normalize.ts       # 지표 값 정규화·종류 판별
