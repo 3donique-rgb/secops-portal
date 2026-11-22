@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { collectRuns, sources } from "../../db/schema";
 import { decryptSecret } from "../../lib/crypto";
 import type { Db } from "../../lib/indicators";
-import { saveIndicator } from "../../lib/indicators";
+import { saveIndicatorsBulk } from "../../lib/indicators";
 import { SEEN_KEY, validateSourceConfig, validateSourceUrl } from "../../lib/source-config";
 import { recomputeExcluded } from "../../lib/whitelist";
 import { collectApi } from "./api";
@@ -77,18 +77,9 @@ export async function runCollect(db: Db, opts: RunOptions): Promise<RunResult[]>
       };
       const result = await collectSource(info, apiKey, opts.fetcher);
 
-      let created = 0;
-      for (const item of result.items) {
-        const r = await saveIndicator(db, {
-          raw: item.raw,
-          source: { id: row.id, name: row.name },
-          refUrl: item.refUrl,
-          note: item.note,
-          now: startedAt,
-        });
-        if (r.status === "created") created++;
-        if (r.status !== "invalid") anySaved = true;
-      }
+      const saved = await saveIndicatorsBulk(db, { items: result.items, source: { id: row.id, name: row.name }, now: startedAt });
+      const created = saved.created;
+      if (saved.created + saved.updated > 0) anySaved = true;
       await db.insert(collectRuns).values({ sourceId: row.id, startedAt, status: "success", newCount: created });
       await db
         .update(sources)

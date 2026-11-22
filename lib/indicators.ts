@@ -5,7 +5,7 @@
  * - 출처(기관명) 없이는 저장하지 않는다.
  * - 90일 동안 다시 확인되지 않으면 비활성, 다시 수집되면 활성으로 복귀한다.
  */
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { indicatorSources, indicators } from "../db/schema";
 import type * as schemaModule from "../db/schema";
@@ -127,6 +127,79 @@ export async function saveIndicator(
 
     return { status, indicatorId };
   });
+}
+
+export type BulkItem = { raw: string; refUrl?: string | null; note?: string | null };
+export type BulkResult = { created: number; updated: number; invalid: number };
+
+/**
+ * 같은 출처의 많은 항목을 한꺼번에 저장한다 (수만 건짜리 목록용).
+ * 규칙은 saveIndicator 와 같다: (종류, 값) 한 건으로 병합, 출처 기관명 필수, 비활성이면 다시 활성, 시각은 거꾸로 가지 않음.
+ * 항목마다 서버에 왕복하면 먼 DB에서는 몇 시간이 걸리므로, 묶음(기본 1,000건)마다 문장 2개만 보낸다.
+ */
+export async function saveIndicatorsBulk(
+  db: Db,
+  input: { items: BulkItem[]; source: SourceRef; now?: Date; chunkSize?: number },
+): Promise<BulkResult> {
+  const sourceName = input.source.name?.trim();
+  if (!input.source.id || !sourceName) throw new Error("출처(기관명) 없이는 위협정보를 저장할 수 없습니다.");
+  const now = input.now ?? new Date();
+  const chunkSize = Math.max(1, input.chunkSize ?? 1000);
+
+  // 정규화하고 같은 (종류, 값)은 하나로 합친다
+  const unique = new Map<string, { norm: NonNullable<ReturnType<typeof normalize>>; refUrl: string | null; note: string | null }>();
+  let invalid = 0;
+  for (const it of input.items) {
+    const norm = normalize(it.raw);
+    if (!norm) {
+      invalid++;
+      continue;
+    }
+    const key = `${norm.type}\u0000${norm.value}`;
+    if (!unique.has(key)) unique.set(key, { norm, refUrl: it.refUrl ?? null, note: it.note ?? null });
+  }
+  const list = [...unique.values()];
+
+  let created = 0;
+  let updated = 0;
+  for (let i = 0; i < list.length; i += chunkSize) {
+    const chunk = list.slice(i, i + chunkSize);
+    const rows = await db
+      .insert(indicators)
+      .values(
+        chunk.map((c) => ({
+          type: c.norm.type,
+          value: c.norm.value,
+          hashKind: c.norm.hashKind,
+          status: "active" as const,
+          excluded: c.norm.reserved,
+          firstSeenAt: now,
+          lastSeenAt: now,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [indicators.type, indicators.value],
+        set: { status: "active", lastSeenAt: sql`greatest(${indicators.lastSeenAt}, excluded.last_seen_at)` },
+      })
+      // xmax = 0 이면 이번에 새로 들어간 줄
+      .returning({ id: indicators.id, type: indicators.type, value: indicators.value, inserted: sql<boolean>`(xmax = 0)` });
+
+    const meta = new Map(chunk.map((c) => [`${c.norm.type}\u0000${c.norm.value}`, c]));
+    await db
+      .insert(indicatorSources)
+      .values(
+        rows.map((r) => {
+          const m = meta.get(`${r.type}\u0000${r.value}`);
+          return { indicatorId: r.id, sourceId: input.source.id, sourceName, firstSeenAt: now, lastSeenAt: now, refUrl: m?.refUrl ?? null, note: m?.note ?? null };
+        }),
+      )
+      .onConflictDoUpdate({
+        target: [indicatorSources.indicatorId, indicatorSources.sourceId],
+        set: { sourceName, lastSeenAt: now },
+      });
+    for (const r of rows) r.inserted ? created++ : updated++;
+  }
+  return { created, updated, invalid };
 }
 
 /**
