@@ -17,6 +17,8 @@ const LABEL: Record<string, string> = {
   user_otp_reset: "OTP 초기화",
   ip_add: "허용 IP 추가",
   ip_remove: "허용 IP 삭제",
+  whitelist_add: "화이트리스트 추가",
+  whitelist_remove: "화이트리스트 삭제",
 };
 
 type SP = { action?: string; q?: string; from?: string; to?: string; page?: string };

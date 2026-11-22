@@ -5,7 +5,7 @@
  * 일치하는 지표는 `excluded = true`로 표시한다. 사설·예약 대역 IP도 제외 상태를 유지한다.
  * 제외된 지표는 DB에 남고 SIEM 제공 목록에서만 빠진다.
  */
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { assets, indicators, whitelist } from "../db/schema";
 import {
   canonicalCidr,
@@ -185,4 +185,60 @@ export async function recomputeExcluded(db: Db): Promise<RecomputeResult> {
     }
   }
   return { excluded: toExclude.length, included: toInclude.length };
+}
+
+// ---------------------------------------------------------------------------
+// 관리자 화면용 추가·삭제 (4.4)
+// ---------------------------------------------------------------------------
+
+export type WhitelistResult =
+  | ({ ok: true } & RecomputeResult & { value: string })
+  | { ok: false; message: string };
+
+export async function listWhitelist(db: Db) {
+  return db
+    .select({ id: whitelist.id, type: whitelist.type, value: whitelist.value, reason: whitelist.reason, createdAt: whitelist.createdAt })
+    .from(whitelist)
+    .orderBy(whitelist.type, whitelist.value);
+}
+
+/** 추가하고 바로 전체 지표의 제외 여부를 다시 계산한다. 지표 자체는 지우지 않는다 [고정]. */
+export async function addWhitelist(
+  db: Db,
+  input: { type: string; value: string; reason?: string | null; createdBy?: string | null },
+): Promise<WhitelistResult> {
+  if (input.type !== "ip" && input.type !== "cidr" && input.type !== "domain") {
+    return { ok: false, message: "종류가 올바르지 않습니다." };
+  }
+  const value = normalizeWhitelistValue(input.type, input.value);
+  if (!value) {
+    return {
+      ok: false,
+      message:
+        input.type === "ip"
+          ? "올바른 IP 주소가 아닙니다."
+          : input.type === "cidr"
+            ? "올바른 IP 대역이 아닙니다. 예: 10.0.0.0/8"
+            : "올바른 도메인이 아닙니다. 예: example.com",
+    };
+  }
+  const [dup] = await db
+    .select({ id: whitelist.id })
+    .from(whitelist)
+    .where(and(eq(whitelist.type, input.type), eq(whitelist.value, value)))
+    .limit(1);
+  if (dup) return { ok: false, message: "이미 등록된 값입니다." };
+  await db.insert(whitelist).values({
+    type: input.type,
+    value,
+    reason: input.reason?.trim().slice(0, 300) || null,
+    createdBy: input.createdBy ?? null,
+  });
+  return { ok: true, value, ...(await recomputeExcluded(db)) };
+}
+
+export async function removeWhitelist(db: Db, id: string): Promise<WhitelistResult> {
+  const rows = await db.delete(whitelist).where(eq(whitelist.id, id)).returning({ value: whitelist.value });
+  if (rows.length === 0) return { ok: false, message: "등록된 항목을 찾을 수 없습니다." };
+  return { ok: true, value: rows[0].value, ...(await recomputeExcluded(db)) };
 }

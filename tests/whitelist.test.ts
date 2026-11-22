@@ -3,10 +3,13 @@ import { assets, indicators, whitelist } from "../db/schema";
 import { canonicalCidr, ipInCidr, isValidCidr } from "../lib/cidr";
 import { saveIndicator, type SourceRef } from "../lib/indicators";
 import {
+  addWhitelist,
   buildRules,
   isExcluded,
+  listWhitelist,
   normalizeWhitelistValue,
   recomputeExcluded,
+  removeWhitelist,
 } from "../lib/whitelist";
 import { sources } from "../db/schema";
 import { createTestDb, resetData } from "./helpers/test-db";
@@ -188,5 +191,49 @@ describe("recomputeExcluded (DB 전체 재계산)", () => {
 
   it("바뀐 것이 없으면 0건이다", async () => {
     expect(await recomputeExcluded(ctx.db)).toEqual({ excluded: 0, included: 0 });
+  });
+});
+
+describe("화이트리스트 추가·삭제 (관리자 화면)", () => {
+  let ctx: Awaited<ReturnType<typeof createTestDb>>;
+  beforeAll(async () => {
+    ctx = await createTestDb();
+  });
+  afterAll(async () => {
+    await ctx.client.close();
+  });
+  beforeEach(async () => {
+    await resetData(ctx.client);
+  });
+
+  it("추가하면 일치하는 지표가 바로 제외되고, 삭제하면 다시 제공 대상이 된다 (지표는 지워지지 않음)", async () => {
+    const [src] = await ctx.db.insert(sources).values({ name: "T기관", kind: "api", url: "https://t.test" }).returning();
+    for (const raw of ["198.51.100.7", "a.corp.example", "evil.test"]) {
+      await saveIndicator(ctx.db, { raw, source: { id: src.id, name: src.name } });
+    }
+    const r = await addWhitelist(ctx.db, { type: "domain", value: " CORP.Example ", reason: "자사" });
+    expect(r).toMatchObject({ ok: true, value: "corp.example", excluded: 1 });
+    const c = await addWhitelist(ctx.db, { type: "cidr", value: "198.51.100.0/24" });
+    expect(c).toMatchObject({ ok: true, excluded: 1 });
+    const rows = await ctx.db.select({ value: indicators.value, excluded: indicators.excluded }).from(indicators);
+    expect(Object.fromEntries(rows.map((x) => [x.value, x.excluded]))).toEqual({
+      "198.51.100.7": true, "a.corp.example": true, "evil.test": false,
+    });
+
+    const list = await listWhitelist(ctx.db);
+    const del = await removeWhitelist(ctx.db, list.find((w) => w.type === "domain")!.id);
+    expect(del).toMatchObject({ ok: true, included: 1 });
+    expect(await ctx.db.select().from(indicators)).toHaveLength(3);
+    expect((await removeWhitelist(ctx.db, "00000000-0000-0000-0000-000000000000")).ok).toBe(false);
+  });
+
+  it("잘못된 값·중복·모르는 종류는 거부한다", async () => {
+    expect((await addWhitelist(ctx.db, { type: "ip", value: "not-an-ip" })).ok).toBe(false);
+    expect((await addWhitelist(ctx.db, { type: "cidr", value: "1.2.3.4/40" })).ok).toBe(false);
+    expect((await addWhitelist(ctx.db, { type: "domain", value: "http://x" })).ok).toBe(false);
+    expect((await addWhitelist(ctx.db, { type: "email", value: "a@b.c" })).ok).toBe(false);
+    expect((await addWhitelist(ctx.db, { type: "ip", value: "203.0.113.9" })).ok).toBe(true);
+    expect((await addWhitelist(ctx.db, { type: "ip", value: "203.0.113.9" })).ok).toBe(false);
+    expect(await listWhitelist(ctx.db)).toHaveLength(1);
   });
 });
