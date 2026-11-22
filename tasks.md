@@ -30,7 +30,7 @@
 - [x] 2.6 lib/whitelist.ts: IP·CIDR·도메인·우리 자산 제외 판정
 - [x] 2.7 tests: 제외 판정 시험 통과
 - [x] 2.8 lib/crypto.ts: AES-256-GCM 암호화·복호화 + 시험
-- [ ] 2.9 lib/auth.ts: 비밀번호 해시·검증, 5회 잠금
+- [x] 2.9 lib/auth.ts: 비밀번호 해시·검증, 5회 잠금
 - [ ] 2.10 lib/auth.ts: OTP 비밀키 생성·QR·코드 검증
 - [ ] 2.11 lib/auth.ts: 허용 IP 판정(관리자 예외)
 - [ ] 2.12 lib/auth.ts: 임시 쿠키·세션 쿠키, 권한 확인 함수

@@ -10,7 +10,7 @@
 | 화면 꾸미기 | Tailwind CSS + shadcn/ui | 표·폼·알림 부품이 잘 갖춰져 있음 |
 | DB | PostgreSQL (Supabase 무료 플랜으로 시작) | Supabase는 DB로만 쓰고 로그인은 직접 만든다(허용 IP, OTP 규칙 때문) **[확인필요]** |
 | DB 접근 | Drizzle ORM | 표 정의가 코드 한 곳에 모임 |
-| 비밀번호 | argon2 해시 | |
+| 비밀번호 | argon2id 해시 (@node-rs/argon2) | Vercel에서 별도 빌드 없이 동작하는 미리 빌드된 패키지 |
 | OTP | otplib (TOTP, 구글 오센티케이터 호환) + qrcode | 무료 |
 | 세션 | 서명된 쿠키(jose), HttpOnly, 유효 8시간 | |
 | 암호화 | AES-256-GCM (OTP 비밀키, 출처 API 키). 키는 환경변수 `APP_ENC_KEY` | |
