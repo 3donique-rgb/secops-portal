@@ -16,7 +16,7 @@
 - [x] 1.2 sources·collect_runs 표 정의
 - [x] 1.3 indicators·indicator_sources 표 정의(고유 조건 포함)
 - [x] 1.4 whitelist·assets 표 정의
-- [ ] 1.5 scan_results·notifications 표 정의
+- [x] 1.5 scan_results·notifications 표 정의
 - [ ] 1.6 audit_logs·api_keys 표 정의
 - [ ] 1.7 마이그레이션 실행, 표가 모두 생겼는지 확인
 - [ ] 1.8 개발용 가짜 데이터 스크립트(seed-demo): 출처 3개, 지표 50건, 자산 10개

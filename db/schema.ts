@@ -220,3 +220,73 @@ export const assets = pgTable(
     index("assets_target_idx").on(t.target),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// 1.5 점검 결과·알림
+// ---------------------------------------------------------------------------
+export const scanStatus = pgEnum("scan_status", [
+  "success",
+  "fail",
+  "partial",
+]);
+export const notificationKind = pgEnum("notification_kind", [
+  "port_opened",
+  "port_closed",
+  "page_exposed",
+  "cert_expiring",
+  "asset_down",
+]);
+
+export type OpenPort = {
+  port: number;
+  protocol: string;
+  service?: string;
+  version?: string;
+};
+export type ExposedPage = {
+  path: string;
+  statusCode: number;
+  kind: string;
+};
+
+export const scanResults = pgTable(
+  "scan_results",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    assetId: uuid()
+      .notNull()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    /** 점검일 (KST 기준 날짜) */
+    scanDate: date({ mode: "string" }).notNull(),
+    scanLevel: smallint().notNull(),
+    status: scanStatus().notNull(),
+    openPorts: jsonb().$type<OpenPort[]>().notNull().default([]),
+    exposedPages: jsonb().$type<ExposedPage[]>().notNull().default([]),
+    certExpiresAt: timestamp({ withTimezone: true }),
+    errorMessage: text(),
+    durationSec: integer(),
+  },
+  (t) => [
+    // 하루 한 건, 재실행하면 덮어쓴다 [고정]
+    unique("scan_results_asset_date_uq").on(t.assetId, t.scanDate),
+    // 1년 지난 결과 삭제용
+    index("scan_results_scan_date_idx").on(t.scanDate),
+  ],
+);
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    kind: notificationKind().notNull(),
+    assetId: uuid()
+      .notNull()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    message: text().notNull(),
+    read: boolean().notNull().default(false),
+    occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("notifications_read_occurred_idx").on(t.read, t.occurredAt)],
+);
