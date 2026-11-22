@@ -28,7 +28,7 @@
 - [x] 2.4 lib/indicators.ts: 만료 처리·비활성 복귀
 - [x] 2.5 tests: 병합·만료·복귀 시험 사례 통과
 - [x] 2.6 lib/whitelist.ts: IP·CIDR·도메인·우리 자산 제외 판정
-- [ ] 2.7 tests: 제외 판정 시험 통과
+- [x] 2.7 tests: 제외 판정 시험 통과
 - [ ] 2.8 lib/crypto.ts: AES-256-GCM 암호화·복호화 + 시험
 - [ ] 2.9 lib/auth.ts: 비밀번호 해시·검증, 5회 잠금
 - [ ] 2.10 lib/auth.ts: OTP 비밀키 생성·QR·코드 검증
