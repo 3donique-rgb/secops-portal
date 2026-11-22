@@ -6,6 +6,7 @@ import { logoutAction } from "./actions";
 const MENU = [
   { href: "/", label: "대시보드" },
   { href: "/indicators", label: "위협정보" },
+  { href: "/reports", label: "보고서" },
   { href: "/assets", label: "자산" },
 ];
 

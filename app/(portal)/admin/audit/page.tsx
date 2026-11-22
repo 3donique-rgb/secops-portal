@@ -19,6 +19,7 @@ const LABEL: Record<string, string> = {
   ip_remove: "허용 IP 삭제",
   whitelist_add: "화이트리스트 추가",
   whitelist_remove: "화이트리스트 삭제",
+  report_download: "보고서 내려받기",
 };
 
 type SP = { action?: string; q?: string; from?: string; to?: string; page?: string };

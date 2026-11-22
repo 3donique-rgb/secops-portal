@@ -51,8 +51,8 @@
 - [x] 4.2 /indicators 키워드·기간 검색
 - [x] 4.3 /indicators/[id] 상세: 출처 목록
 - [x] 4.4 /admin/whitelist 화면 + 추가·삭제 시 제외 재계산
-- [ ] 4.5 lib/report-pdf.ts: PDF 보고서 생성(한글 폰트 포함)
-- [ ] 4.6 /reports 화면: 조건 입력, 미리보기 건수, PDF 내려받기
+- [x] 4.5 lib/report-pdf.ts: PDF 보고서 생성(한글 폰트 포함)
+- [x] 4.6 /reports 화면: 조건 입력, 미리보기 건수, PDF 내려받기
 - [ ] 4.7 /admin/siem 화면: API 키 발급·폐기(해시 저장)
 - [ ] 4.8 GET /api/siem/indicators (json·csv·txt, 인증, 조건)
 - [ ] 4.9 tests: SIEM API 시험(키 없음·폐기·excluded 제외)

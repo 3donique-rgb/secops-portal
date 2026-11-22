@@ -148,3 +148,25 @@ export async function listSourceNames(db: Db): Promise<string[]> {
     .orderBy(asc(indicatorSources.sourceName));
   return rows.map((r) => r.name);
 }
+
+/** 조건에 맞는 지표의 종류별 건수 (보고서 요약용) */
+export async function countByType(db: Db, f: IndicatorFilter): Promise<Record<string, number>> {
+  const rows = await db
+    .select({ type: indicators.type, n: sql<number>`count(*)::int` })
+    .from(indicators)
+    .where(buildWhere(f))
+    .groupBy(indicators.type);
+  return Object.fromEntries(rows.map((r) => [r.type, r.n]));
+}
+
+/** 조건에 맞는 지표의 기관별 건수 (한 지표를 여러 기관이 보냈으면 기관마다 1건씩 센다) */
+export async function countBySource(db: Db, f: IndicatorFilter): Promise<{ name: string; n: number }[]> {
+  const rows = await db
+    .select({ name: indicatorSources.sourceName, n: sql<number>`count(distinct ${indicatorSources.indicatorId})::int` })
+    .from(indicatorSources)
+    .innerJoin(indicators, eq(indicators.id, indicatorSources.indicatorId))
+    .where(buildWhere(f))
+    .groupBy(indicatorSources.sourceName)
+    .orderBy(desc(sql`count(distinct ${indicatorSources.indicatorId})`), asc(indicatorSources.sourceName));
+  return rows;
+}

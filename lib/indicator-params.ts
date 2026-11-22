@@ -37,3 +37,21 @@ export function parseIndicatorParams(sp: RawParams): { filter: IndicatorFilter; 
   const page = Math.min(Math.max(Number.parseInt(first(sp.page) ?? "1", 10) || 1, 1), 100000);
   return { filter, page };
 }
+
+const STATUS_LABEL = { active: "활성", inactive: "비활성(만료)" } as const;
+const TYPE_NAMES: Record<string, string> = { ip: "IP", domain: "도메인", url: "URL", hash: "파일 해시", email: "메일 발신자" };
+
+/** 보고서·화면에 적는 조건 요약 (사람이 읽는 문장 목록). */
+export function describeFilter(sp: RawParams, f: IndicatorFilter): string[] {
+  const out: string[] = [];
+  const from = first(sp.from);
+  const to = first(sp.to);
+  if (f.from || f.to) out.push(`기간(최종 확인일): ${f.from ? from : "처음"} ~ ${f.to ? to : "현재"}`);
+  if (f.types?.length) out.push(`종류: ${f.types.map((t) => TYPE_NAMES[t]).join(", ")}`);
+  if (f.sourceName) out.push(`제공 기관: ${f.sourceName}`);
+  if (f.status) out.push(`상태: ${STATUS_LABEL[f.status]}`);
+  if (f.excluded === "only") out.push("SIEM 제외된 것만");
+  if (f.excluded === "none") out.push("SIEM 제외 안 된 것만");
+  if (f.keyword) out.push(`키워드: ${f.keyword}`);
+  return out;
+}

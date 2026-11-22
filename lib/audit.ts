@@ -17,6 +17,7 @@ export const AUDIT_ACTIONS = [
   "ip_remove",
   "whitelist_add",
   "whitelist_remove",
+  "report_download",
 ] as const;
 
 export type AuditInput = {
