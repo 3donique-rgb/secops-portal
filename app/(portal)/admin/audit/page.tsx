@@ -24,6 +24,9 @@ const LABEL: Record<string, string> = {
   apikey_revoke: "API 키 폐기",
   source_create: "수집 출처 등록",
   source_update: "수집 출처 수정",
+  asset_create: "자산 등록",
+  asset_update: "자산 수정",
+  asset_delete: "자산 삭제",
 };
 
 type SP = { action?: string; q?: string; from?: string; to?: string; page?: string };

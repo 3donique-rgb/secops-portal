@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { NotificationBell } from "@/components/notification-bell";
+import { getDb } from "@/db";
+import { unreadCount } from "@/lib/notifications";
 import { requireUser } from "@/lib/session";
 import { logoutAction } from "./actions";
 
@@ -20,6 +23,7 @@ const ADMIN_MENU = [
 
 async function Shell({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  const unread = await unreadCount(getDb());
   return (
     <div className="min-h-screen">
       <header className="border-b border-gray-200">
@@ -44,9 +48,7 @@ async function Shell({ children }: { children: React.ReactNode }) {
               </>
             )}
           </nav>
-          <Link href="/notifications" aria-label="알림" title="알림" className="text-lg">
-            🔔
-          </Link>
+          <NotificationBell initial={unread} />
           <span className="text-sm text-gray-600">
             {user.name} ({user.role === "admin" ? "관리자" : "조회"})
           </span>
