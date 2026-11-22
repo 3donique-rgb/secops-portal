@@ -1,0 +1,30 @@
+# 정리 작업: 하루 한 번 (한국 시간 새벽 3시 10분). 90일 만료 처리, 1년 지난 점검 결과·알림·수집 이력 삭제.
+name: 정리 작업
+
+on:
+  schedule:
+    - cron: "10 18 * * *" # UTC 18:10 = KST 03:10
+  workflow_dispatch:
+
+concurrency:
+  group: cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 정리 실행
+        run: npm run cleanup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

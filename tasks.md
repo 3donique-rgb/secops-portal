@@ -65,8 +65,8 @@
 - [x] 5.5 worker/collect/pdf.ts 수집기
 - [x] 5.6 수집기 시험(가짜 응답으로 화면 없이 실행)
 - [x] 5.7 /admin/sources/[id]/runs 수집 이력 화면
-- [ ] 5.8 .github/workflows/collect.yml(1시간 주기) + GitHub Secrets 설정
-- [ ] 5.9 worker/cleanup.ts + cleanup.yml(만료 처리, 1년 보관 삭제)
+- [ ] 5.8 .github/workflows/collect.yml(1시간 주기) + GitHub Secrets 설정 — 파일 작성 완료, GitHub Secrets 입력은 사용자 확인 대기
+- [x] 5.9 worker/cleanup.ts + cleanup.yml(만료 처리, 1년 보관 삭제)
 
 ## 6. 자산 등록·대시보드 (1차)
 - [ ] 6.1 /assets 목록
