@@ -53,9 +53,9 @@
 - [x] 4.4 /admin/whitelist 화면 + 추가·삭제 시 제외 재계산
 - [x] 4.5 lib/report-pdf.ts: PDF 보고서 생성(한글 폰트 포함)
 - [x] 4.6 /reports 화면: 조건 입력, 미리보기 건수, PDF 내려받기
-- [ ] 4.7 /admin/siem 화면: API 키 발급·폐기(해시 저장)
-- [ ] 4.8 GET /api/siem/indicators (json·csv·txt, 인증, 조건)
-- [ ] 4.9 tests: SIEM API 시험(키 없음·폐기·excluded 제외)
+- [x] 4.7 /admin/siem 화면: API 키 발급·폐기(해시 저장)
+- [x] 4.8 GET /api/siem/indicators (json·csv·txt, 인증, 조건)
+- [x] 4.9 tests: SIEM API 시험(키 없음·폐기·excluded 제외)
 
 ## 5. 수집기 (1차)
 - [ ] 5.1 /admin/sources 화면: 출처 등록·수정·사용 여부(API 키 암호화 저장)

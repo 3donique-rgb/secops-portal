@@ -18,6 +18,8 @@ export const AUDIT_ACTIONS = [
   "whitelist_add",
   "whitelist_remove",
   "report_download",
+  "apikey_create",
+  "apikey_revoke",
 ] as const;
 
 export type AuditInput = {

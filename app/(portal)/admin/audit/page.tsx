@@ -20,6 +20,8 @@ const LABEL: Record<string, string> = {
   whitelist_add: "화이트리스트 추가",
   whitelist_remove: "화이트리스트 삭제",
   report_download: "보고서 내려받기",
+  apikey_create: "API 키 발급",
+  apikey_revoke: "API 키 폐기",
 };
 
 type SP = { action?: string; q?: string; from?: string; to?: string; page?: string };
