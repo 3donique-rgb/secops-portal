@@ -49,7 +49,8 @@ export async function seedDemo(db: Db, now: Date = new Date()): Promise<SeedDemo
   const refs: SourceRef[] = [];
   for (const s of DEMO_SOURCES) {
     const [found] = await db.select().from(sources).where(eq(sources.name, s.name)).limit(1);
-    const row = found ?? (await db.insert(sources).values(s).returning())[0];
+    // 가짜 출처는 수집이 돌지 않도록 "사용 안 함"으로 만든다 (실제 주소가 아니므로)
+    const row = found ?? (await db.insert(sources).values({ ...s, enabled: false }).returning())[0];
     refs.push({ id: row.id, name: row.name });
   }
 

@@ -20,6 +20,8 @@ export const AUDIT_ACTIONS = [
   "report_download",
   "apikey_create",
   "apikey_revoke",
+  "source_create",
+  "source_update",
 ] as const;
 
 export type AuditInput = {

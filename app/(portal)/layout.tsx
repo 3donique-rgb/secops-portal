@@ -12,6 +12,7 @@ const MENU = [
 
 const ADMIN_MENU = [
   { href: "/admin/users", label: "사용자" },
+  { href: "/admin/sources", label: "수집 출처" },
   { href: "/admin/whitelist", label: "화이트리스트" },
   { href: "/admin/siem", label: "SIEM 연동" },
   { href: "/admin/audit", label: "감사 로그" },

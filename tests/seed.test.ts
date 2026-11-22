@@ -34,6 +34,8 @@ describe("seedDemo", () => {
   it("출처 3개, 지표 50건, 자산 10개를 넣고 모든 지표에 기관명이 기록된다", async () => {
     const r = await seedDemo(ctx.db, NOW);
     expect(r).toEqual({ sources: 3, indicators: 50, assets: 10, excluded: 0 });
+    // 가짜 출처는 실제로 수집이 돌지 않도록 사용 안 함
+    expect((await ctx.db.select().from(sources)).every((x) => x.enabled === false)).toBe(true);
 
     const inds = await ctx.db.select().from(indicators);
     expect(inds).toHaveLength(50);

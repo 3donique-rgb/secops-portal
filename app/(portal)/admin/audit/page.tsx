@@ -22,6 +22,8 @@ const LABEL: Record<string, string> = {
   report_download: "보고서 내려받기",
   apikey_create: "API 키 발급",
   apikey_revoke: "API 키 폐기",
+  source_create: "수집 출처 등록",
+  source_update: "수집 출처 수정",
 };
 
 type SP = { action?: string; q?: string; from?: string; to?: string; page?: string };

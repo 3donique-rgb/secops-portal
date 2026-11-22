@@ -58,13 +58,13 @@
 - [x] 4.9 tests: SIEM API 시험(키 없음·폐기·excluded 제외)
 
 ## 5. 수집기 (1차)
-- [ ] 5.1 /admin/sources 화면: 출처 등록·수정·사용 여부(API 키 암호화 저장)
+- [x] 5.1 /admin/sources 화면: 출처 등록·수정·사용 여부(API 키 암호화 저장)
 - [x] 5.2 worker/collect: 공통 실행 틀(출처 순회, 실패 격리, collect_runs 기록, 제한 시간·재시도)
 - [x] 5.3 worker/collect/api.ts 수집기
 - [x] 5.4 worker/collect/html.ts 수집기
 - [x] 5.5 worker/collect/pdf.ts 수집기
 - [x] 5.6 수집기 시험(가짜 응답으로 화면 없이 실행)
-- [ ] 5.7 /admin/sources/[id]/runs 수집 이력 화면
+- [x] 5.7 /admin/sources/[id]/runs 수집 이력 화면
 - [ ] 5.8 .github/workflows/collect.yml(1시간 주기) + GitHub Secrets 설정
 - [ ] 5.9 worker/cleanup.ts + cleanup.yml(만료 처리, 1년 보관 삭제)
 
