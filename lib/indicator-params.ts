@@ -32,6 +32,7 @@ export function parseIndicatorParams(sp: RawParams): { filter: IndicatorFilter; 
     keyword: first(sp.q)?.slice(0, 200) || undefined,
     from: kstDate(first(sp.from)),
     to: kstDate(first(sp.to), 1), // 종료일 당일 포함
+    country: /^[A-Za-z]{2}$/.test(first(sp.country)?.trim() ?? "") ? first(sp.country)!.trim().toUpperCase() : undefined,
     excluded: excluded === "only" || excluded === "none" ? excluded : undefined,
   };
   const page = Math.min(Math.max(Number.parseInt(first(sp.page) ?? "1", 10) || 1, 1), 100000);
@@ -49,6 +50,7 @@ export function describeFilter(sp: RawParams, f: IndicatorFilter): string[] {
   if (f.from || f.to) out.push(`기간(최종 확인일): ${f.from ? from : "처음"} ~ ${f.to ? to : "현재"}`);
   if (f.types?.length) out.push(`종류: ${f.types.map((t) => TYPE_NAMES[t]).join(", ")}`);
   if (f.sourceName) out.push(`제공 기관: ${f.sourceName}`);
+  if (f.country) out.push(`국가: ${f.country}`);
   if (f.status) out.push(`상태: ${STATUS_LABEL[f.status]}`);
   if (f.excluded === "only") out.push("SIEM 제외된 것만");
   if (f.excluded === "none") out.push("SIEM 제외 안 된 것만");

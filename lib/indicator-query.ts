@@ -24,7 +24,24 @@ export type IndicatorFilter = {
   to?: Date;
   /** all(기본) | only(제외된 것만) | none(제외된 것 빼고 = SIEM에 나가는 것) */
   excluded?: "all" | "only" | "none";
+  /** 두 글자 국가 코드(예: KR). IP는 자기 자신, 도메인은 DNS로 찾은 IP의 국가 기준 */
+  country?: string;
 };
+
+/** 위협정보의 IPv4를 숫자로: 도메인은 DNS로 찾은 IP, IP 종류는 값 자체. 해당 없으면 null */
+const IND_ID = sql.raw('"indicators"."id"');
+const IND_TYPE = sql.raw('"indicators"."type"');
+const IND_VALUE = sql.raw('"indicators"."value"');
+const ipNumSql = sql`coalesce(
+  (select d.ip_num from domain_ips d where d.indicator_id = ${IND_ID} and d.status = 'ok'),
+  case when ${IND_TYPE} = 'ip' and ${IND_VALUE} ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$'
+    then split_part(${IND_VALUE}, '.', 1)::bigint * 16777216 + split_part(${IND_VALUE}, '.', 2)::bigint * 65536
+       + split_part(${IND_VALUE}, '.', 3)::bigint * 256 + split_part(${IND_VALUE}, '.', 4)::bigint end)`;
+
+/** 가장 좁은 대역의 국가가 같을 때만 일치 (GiST 인덱스로 빠르게 찾는다) */
+function countryCond(code: string): SQL {
+  return sql`(select r.country_code from net_ranges r where int8range(r.start_num, r.end_num, '[]') @> (${ipNumSql}) order by r.end_num - r.start_num limit 1) = ${code}`;
+}
 
 /** LIKE 특수문자(%, _, \)를 글자 그대로 찾도록 막는다. */
 export function escapeLike(s: string): string {
@@ -38,6 +55,7 @@ export function buildWhere(f: IndicatorFilter): SQL | undefined {
     f.status ? eq(indicators.status, f.status) : undefined,
     f.from ? gte(indicators.lastSeenAt, f.from) : undefined,
     f.to ? lt(indicators.lastSeenAt, f.to) : undefined,
+    f.country ? countryCond(f.country.toUpperCase()) : undefined,
     f.excluded === "only" ? eq(indicators.excluded, true) : undefined,
     f.excluded === "none" ? eq(indicators.excluded, false) : undefined,
     f.sourceName

@@ -40,6 +40,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
   if (one(sp.from)) baseParams.push(["from", one(sp.from)]);
   if (one(sp.to)) baseParams.push(["to", one(sp.to)]);
   if (filter.excluded) baseParams.push(["excluded", filter.excluded]);
+  if (filter.country) baseParams.push(["country", filter.country]);
   const input = "rounded border border-gray-300 px-2 py-1.5 text-sm";
 
   return (
@@ -83,6 +84,10 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
               <option value="only">제외된 것만</option>
               <option value="none">제외 안 된 것만</option>
             </select>
+          </label>
+          <label className="text-sm">
+            국가코드
+            <input name="country" defaultValue={filter.country ?? ""} maxLength={2} pattern="[A-Za-z]{2}" placeholder="KR" title="두 글자 국가코드 (예: KR, US, CN)" className={`${input} block w-24 uppercase`} />
           </label>
           <label className="text-sm">
             키워드 (값·메모·기관명)

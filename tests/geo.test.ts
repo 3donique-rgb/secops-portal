@@ -221,3 +221,30 @@ describe("도메인 IP·국가 채우기", () => {
     expect((await ctx.db.select().from(netRanges)).some((x) => x.startNum === 1)).toBe(true);
   });
 });
+
+describe("국가코드로 위협정보 조회", () => {
+  it("IP·도메인을 국가별로 찾고, 좁은 대역이 우선", async () => {
+    await resetData(ctx.client);
+    const [s] = await ctx.db.insert(sources).values({ name: "기관A", kind: "api", url: "https://a.test" }).returning();
+    const src = { id: s.id, name: s.name };
+    for (const raw of ["58.1.0.7", "8.8.8.8", "9.9.9.9", "kr.example", "us.example", "2001:db8::1"]) await saveIndicator(ctx.db, { raw, source: src });
+    const inds = await ctx.db.select().from(indicators);
+    const id = (v: string) => inds.find((i) => i.value === v)!.id;
+    await ctx.db.insert(netRanges).values([
+      { startNum: ipv4ToNum("58.0.0.0")!, endNum: ipv4ToNum("58.255.255.255")!, countryCode: "KR", netName: "x" },
+      { startNum: ipv4ToNum("8.0.0.0")!, endNum: ipv4ToNum("8.255.255.255")!, countryCode: "US", netName: "x" },
+      // 9.x 는 넓은 US 안의 좁은 KR 대역 → 9.9.9.9 는 KR
+      { startNum: ipv4ToNum("9.0.0.0")!, endNum: ipv4ToNum("9.255.255.255")!, countryCode: "US", netName: "x" },
+      { startNum: ipv4ToNum("9.9.9.0")!, endNum: ipv4ToNum("9.9.9.255")!, countryCode: "KR", netName: "x" },
+    ]);
+    await ctx.db.insert(domainIps).values([
+      { indicatorId: id("kr.example"), status: "ok", ip: "58.9.9.9", ipNum: ipv4ToNum("58.9.9.9") },
+      { indicatorId: id("us.example"), status: "ok", ip: "8.1.1.1", ipNum: ipv4ToNum("8.1.1.1") },
+    ]);
+    const { searchIndicators } = await import("../lib/indicator-query");
+    const vals = async (country: string) => (await searchIndicators(ctx.db, { country }, { page: 1, pageSize: 50 })).rows.map((r) => r.value).sort();
+    expect(await vals("KR")).toEqual(["58.1.0.7", "9.9.9.9", "kr.example"]);
+    expect(await vals("us")).toEqual(["8.8.8.8", "us.example"]);
+    expect(await vals("JP")).toEqual([]);
+  });
+});

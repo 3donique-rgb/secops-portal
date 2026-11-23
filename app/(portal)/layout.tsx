@@ -13,9 +13,9 @@ const item = (href: string, label: string, icon: IconName): NavItem => ({ href, 
 const MENU = [
   item("/", "대시보드", "dashboard"),
   item("/indicators", "위협정보", "shield"),
-  item("/reports", "보고서", "report"),
   item("/assets", "자산점검", "server"),
   item("/tools", "환경점검", "tool"),
+  item("/reports", "보고서", "report"),
 ];
 
 const ADMIN_MENU = [

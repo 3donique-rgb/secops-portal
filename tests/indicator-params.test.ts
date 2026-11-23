@@ -40,3 +40,11 @@ describe("검색 조건 해석", () => {
     expect(kstDate("2026-11-30", 0)?.toISOString()).toBe("2026-11-29T15:00:00.000Z");
   });
 });
+
+describe("국가코드 조건", () => {
+  it("두 글자 영문만 받고 대문자로 바꾼다", () => {
+    expect(parseIndicatorParams({ country: "kr" }).filter.country).toBe("KR");
+    expect(parseIndicatorParams({ country: "KOR" }).filter.country).toBeUndefined();
+    expect(parseIndicatorParams({ country: "1;" }).filter.country).toBeUndefined();
+  });
+});
