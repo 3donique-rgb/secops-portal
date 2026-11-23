@@ -393,3 +393,25 @@ export const netRanges = pgTable(
   },
   (t) => [unique("net_ranges_range_uq").on(t.startNum, t.endNum), index("net_ranges_start_idx").on(t.startNum, t.endNum)],
 );
+
+/** 보안뉴스: 구글 뉴스·네이버 검색으로 모은 기사 (제목·등록일시·언론사·본문 일부·원문 주소) */
+export const newsArticles = pgTable(
+  "news_articles",
+  {
+    id: id(),
+    createdAt: createdAt(),
+    /** 제목을 정리해 해시한 값: 같은 기사가 구글·네이버에서 둘 다 나와도 한 번만 저장 */
+    titleKey: text().notNull().unique(),
+    title: text().notNull(),
+    publisher: text().notNull().default(""),
+    publishedAt: timestamp({ withTimezone: true }).notNull(),
+    /** 본문 일부(최대 약 1,500자) 또는 검색 결과 요약 */
+    body: text().notNull().default(""),
+    url: text().notNull(),
+    /** google | naver */
+    provider: text().notNull(),
+    /** 이 기사를 찾은 검색어들 */
+    keywords: text().array().notNull().default(sql`'{}'::text[]`),
+  },
+  (t) => [index("news_articles_published_idx").on(t.publishedAt.desc())],
+);

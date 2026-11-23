@@ -15,6 +15,7 @@ const MENU = [
   item("/indicators", "위협정보", "shield"),
   item("/assets", "자산점검", "server"),
   item("/tools", "환경점검", "tool"),
+  item("/news", "보안뉴스", "news"),
   item("/reports", "보고서", "report"),
 ];
 

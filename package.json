@@ -13,6 +13,7 @@
     "test": "vitest run",
     "enrich": "tsx worker/enrich/cli.ts",
     "vt:auto": "tsx worker/vt/cli.ts",
+    "news": "tsx worker/news/cli.ts",
     "db:update": "tsx scripts/db-update.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",

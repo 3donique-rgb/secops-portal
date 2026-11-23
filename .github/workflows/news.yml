@@ -1,0 +1,38 @@
+# 보안뉴스 수집: 매일 아침 6시 40분(KST). 구글 뉴스는 키 없이, 네이버는 키가 있을 때만 함께 수집한다.
+# 필요한 Secrets: DATABASE_URL (필수), NAVER_CLIENT_ID / NAVER_CLIENT_SECRET (선택, 네이버 개발자센터 무료 키 - 직접 입력)
+name: 보안뉴스 수집
+
+on:
+  schedule:
+    - cron: "40 21 * * *" # UTC 21:40 = KST 06:40
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "최근 며칠 기사를 가져올지 (처음 한 번은 7 정도 권장)"
+        default: "2"
+
+concurrency:
+  group: news
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 뉴스 수집
+        run: npm run news
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          NEWS_DAYS: ${{ github.event.inputs.days || '2' }}

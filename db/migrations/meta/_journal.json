@@ -43,6 +43,13 @@
       "when": 1795441997901,
       "tag": "0005_net_ranges_gist",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795477923637,
+      "tag": "0006_news",
+      "breakpoints": true
     }
   ]
 }
