@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "otp_required" boolean DEFAULT true NOT NULL;

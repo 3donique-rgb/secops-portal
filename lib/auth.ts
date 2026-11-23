@@ -450,7 +450,7 @@ export async function getSessionUser(
   const userId = await readSessionToken(token, now, secret);
   if (!userId) return null;
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.locked || !user.otpEnabled) return null;
+  if (!user || user.locked || (user.otpRequired && !user.otpEnabled)) return null;
   return { id: user.id, username: user.username, name: user.name, role: user.role };
 }
 

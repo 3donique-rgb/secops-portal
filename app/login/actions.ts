@@ -8,6 +8,10 @@ import {
   LOGIN_ERROR_MESSAGE,
   PRE_AUTH_COOKIE,
   PRE_AUTH_TTL_SECONDS,
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  createSessionToken,
+  resetFailedCount,
   checkAllowedIp,
   cookieOptions,
   createPreAuthToken,
@@ -61,6 +65,14 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
           ? "이 계정에는 로그인이 허용된 IP가 등록되어 있지 않습니다. 관리자에게 문의하세요."
           : "허용되지 않은 IP에서의 접속입니다. 관리자에게 문의하세요.",
     };
+  }
+
+  // OTP를 쓰지 않도록 설정된 계정은 여기서 바로 로그인 완료
+  if (!result.user.otpRequired) {
+    await resetFailedCount(db, result.user.id);
+    await writeAudit(db, { userId: result.user.id, action: "login_success", target: result.user.username, detail: { otp: "not_required" }, ip });
+    (await cookies()).set(SESSION_COOKIE, await createSessionToken(result.user.id), cookieOptions(SESSION_TTL_SECONDS));
+    redirect("/");
   }
 
   const token = await createPreAuthToken(result.user.id);

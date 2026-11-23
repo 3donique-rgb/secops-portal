@@ -42,6 +42,8 @@ export const users = pgTable("users", {
   /** AES-256-GCM으로 암호화한 OTP 비밀키 */
   otpSecretEnc: text(),
   otpEnabled: boolean().notNull().default(false),
+  /** false 이면 아이디·비밀번호(와 허용 IP)만으로 로그인한다 (관리자가 계정별로 선택) */
+  otpRequired: boolean().notNull().default(true),
   failedCount: integer().notNull().default(0),
   locked: boolean().notNull().default(false),
   lastLoginAt: timestamp({ withTimezone: true }),

@@ -12,6 +12,7 @@ import {
   removeAllowedIp,
   resetOtp,
   setUserRole,
+  updateUser,
   unlockAccount,
 } from "@/lib/users";
 import { getUsername } from "./queries";
@@ -26,19 +27,21 @@ export async function createUserAction(_p: ActionState, fd: FormData): Promise<A
   const admin = await requireAdmin();
   const db = getDb();
   const role = fd.get("role") === "admin" ? "admin" : "viewer";
+  const otpRequired = fd.get("otpRequired") !== "off";
   const r = await createUser(db, {
     username: String(fd.get("username") ?? ""),
     name: String(fd.get("name") ?? ""),
     password: String(fd.get("password") ?? ""),
     role,
+    otpRequired,
   });
   if (!r.ok) return fail(r.message);
   await writeAudit(db, {
     userId: admin.id, action: "user_create", target: String(fd.get("username")).trim(),
-    detail: { role }, ip: getClientIp(await headers()),
+    detail: { role, otpRequired }, ip: getClientIp(await headers()),
   });
   revalidatePath("/admin/users");
-  return done("사용자를 만들었습니다. 첫 로그인 때 OTP를 등록합니다.");
+  return done(otpRequired ? "사용자를 만들었습니다. 첫 로그인 때 OTP를 등록합니다." : "사용자를 만들었습니다. OTP 없이 로그인합니다.");
 }
 
 export async function setRoleAction(_p: ActionState, fd: FormData): Promise<ActionState> {
@@ -104,4 +107,23 @@ export async function removeIpAction(_p: ActionState, fd: FormData): Promise<Act
   });
   revalidatePath(`/admin/users/${userId}`);
   return done("삭제했습니다.");
+}
+
+export async function updateUserAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const db = getDb();
+  const userId = String(fd.get("userId"));
+  const role = fd.get("role") === "admin" ? "admin" : "viewer";
+  const otpRequired = fd.get("otpRequired") !== "off";
+  const password = String(fd.get("password") ?? "");
+  if (userId === admin.id && role !== "admin") return fail("본인 권한은 바꿀 수 없습니다.");
+  const r = await updateUser(db, userId, { name: String(fd.get("name") ?? ""), role, otpRequired, password: password || undefined });
+  if (!r.ok) return fail(r.message);
+  await writeAudit(db, {
+    userId: admin.id, action: "user_update", target: await getUsername(userId),
+    detail: { role, otpRequired, passwordChanged: !!password }, ip: getClientIp(await headers()),
+  });
+  revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${userId}`);
+  return done(password ? "저장했습니다. 비밀번호도 변경했습니다." : "저장했습니다.");
 }

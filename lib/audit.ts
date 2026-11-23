@@ -11,6 +11,7 @@ export const AUDIT_ACTIONS = [
   "logout",
   "user_create",
   "user_role_change",
+  "user_update",
   "user_unlock",
   "user_otp_reset",
   "ip_add",

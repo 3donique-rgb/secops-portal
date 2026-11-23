@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { users } from "../db/schema";
-import { MAX_FAILED_ATTEMPTS, recordFailedAttempt, verifyCredentials } from "../lib/auth";
+import { MAX_FAILED_ATTEMPTS, createSessionToken, getSessionUser, recordFailedAttempt, verifyCredentials } from "../lib/auth";
 import { listAudit, writeAudit } from "../lib/audit";
 import {
   addAllowedIp,
@@ -12,6 +12,7 @@ import {
   resetOtp,
   setUserRole,
   unlockAccount,
+  updateUser,
 } from "../lib/users";
 import { createTestDb, resetData } from "./helpers/test-db";
 
@@ -139,5 +140,38 @@ describe("감사 로그", () => {
     const r = await listAudit(ctx.db);
     expect(r.total).toBe(1);
     expect(r.rows[0].username).toBeNull();
+  });
+});
+
+describe("계정 수정·OTP 사용 여부", () => {
+  const SECRET = "x".repeat(40);
+  it("OTP 없이 만든 계정은 OTP 등록 없이도 세션이 유효", async () => {
+    const r = await createUser(ctx.db, { username: "noop", name: "n", password: PW, role: "viewer", otpRequired: false });
+    if (!r.ok) throw new Error(r.message);
+    const tok = await createSessionToken(r.id, new Date(), SECRET);
+    expect((await getSessionUser(ctx.db, tok, new Date(), SECRET))?.username).toBe("noop");
+    const r2 = await createUser(ctx.db, { username: "withop", name: "w", password: PW, role: "viewer" });
+    if (!r2.ok) throw new Error(r2.message);
+    const tok2 = await createSessionToken(r2.id, new Date(), SECRET);
+    expect(await getSessionUser(ctx.db, tok2, new Date(), SECRET)).toBeNull();
+    expect((await listUsers(ctx.db)).find((u) => u.username === "noop")?.otpRequired).toBe(false);
+  });
+  it("수정: 이름·OTP·비밀번호·권한", async () => {
+    const a = await mk("adm", "admin");
+    const b = await mk("usr");
+    await recordFailedAttempt(ctx.db, b);
+    const r = await updateUser(ctx.db, b, { name: "새이름", role: "admin", otpRequired: false, password: "another-pass-99" });
+    expect(r.ok).toBe(true);
+    const [u] = await ctx.db.select().from(users).where(eq(users.id, b));
+    expect(u).toMatchObject({ name: "새이름", role: "admin", otpRequired: false, failedCount: 0 });
+    expect((await verifyCredentials(ctx.db, "usr", "another-pass-99")).ok).toBe(true);
+    // 비밀번호 비워 두면 유지, 짧으면 거부, 이름 비면 거부
+    expect((await updateUser(ctx.db, b, { name: "x", role: "admin", otpRequired: true })).ok).toBe(true);
+    expect((await verifyCredentials(ctx.db, "usr", "another-pass-99")).ok).toBe(true);
+    expect((await updateUser(ctx.db, b, { name: "x", role: "admin", otpRequired: true, password: "short" })).ok).toBe(false);
+    expect((await updateUser(ctx.db, b, { name: " ", role: "admin", otpRequired: true })).ok).toBe(false);
+    // 관리자가 둘일 때만 낮출 수 있고, 마지막 관리자는 거부
+    expect((await updateUser(ctx.db, b, { name: "x", role: "viewer", otpRequired: true })).ok).toBe(true);
+    expect((await updateUser(ctx.db, a, { name: "adm", role: "viewer", otpRequired: true })).ok).toBe(false);
   });
 });

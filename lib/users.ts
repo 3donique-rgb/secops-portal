@@ -17,6 +17,7 @@ export async function listUsers(db: Db) {
       name: users.name,
       role: users.role,
       otpEnabled: users.otpEnabled,
+      otpRequired: users.otpRequired,
       locked: users.locked,
       failedCount: users.failedCount,
       lastLoginAt: users.lastLoginAt,
@@ -29,7 +30,7 @@ export async function listUsers(db: Db) {
 
 export async function createUser(
   db: Db,
-  input: { username: string; name: string; password: string; role: "admin" | "viewer" },
+  input: { username: string; name: string; password: string; role: "admin" | "viewer"; otpRequired?: boolean },
 ): Promise<Result<{ id: string }>> {
   const username = input.username.trim();
   const name = input.name.trim();
@@ -42,9 +43,34 @@ export async function createUser(
   if (dup) return { ok: false, message: "이미 사용 중인 아이디입니다." };
   const [row] = await db
     .insert(users)
-    .values({ username, name, passwordHash: await hashPassword(input.password), role: input.role })
+    .values({ username, name, passwordHash: await hashPassword(input.password), role: input.role, otpRequired: input.otpRequired ?? true })
     .returning({ id: users.id });
   return { ok: true, id: row.id };
+}
+
+/** 계정 수정: 이름, 권한, OTP 사용 여부, (입력했을 때만) 비밀번호 변경. 비밀번호를 바꾸면 실패 횟수를 0으로 되돌린다. */
+export async function updateUser(
+  db: Db,
+  userId: string,
+  input: { name: string; role: "admin" | "viewer"; otpRequired: boolean; password?: string },
+): Promise<Result> {
+  const name = input.name.trim();
+  if (!name || name.length > 50) return { ok: false, message: "이름은 1~50자로 입력하세요." };
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return { ok: false, message: "사용자를 찾을 수 없습니다." };
+  const set: Partial<typeof users.$inferInsert> = { name, otpRequired: input.otpRequired };
+  if (input.password) {
+    const problem = validatePassword(input.password);
+    if (problem) return { ok: false, message: problem };
+    set.passwordHash = await hashPassword(input.password);
+    set.failedCount = 0;
+  }
+  if (input.role !== user.role) {
+    const r = await setUserRole(db, userId, input.role);
+    if (!r.ok) return r;
+  }
+  await db.update(users).set(set).where(eq(users.id, userId));
+  return { ok: true };
 }
 
 /** 마지막 관리자를 viewer로 낮추는 것은 막는다 (아무도 관리할 수 없게 되므로). */

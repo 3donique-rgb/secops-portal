@@ -13,7 +13,8 @@ const fmt = (d: Date | null) =>
 export default async function UsersPage() {
   const me = await requireAdmin();
   const rows = await listUsers(getDb());
-  const input = "mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm";
+  const input = "h-[2.4rem] w-full rounded-lg border border-gray-300 px-3 text-sm";
+  const lab = "mb-1 block font-medium";
   const btn = "rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50";
 
   return (
@@ -22,30 +23,39 @@ export default async function UsersPage() {
 
       <section>
         <h2 className="mb-2 font-semibold">새 사용자</h2>
-        <ActionForm action={createUserAction} className="grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-5">
-          <label className="text-sm">
-            아이디
-            <input name="username" required minLength={3} maxLength={32} autoComplete="off" className={input} />
-          </label>
-          <label className="text-sm">
-            이름
-            <input name="name" required maxLength={50} autoComplete="off" className={input} />
-          </label>
-          <label className="text-sm">
-            초기 비밀번호 (10자 이상)
-            <input name="password" type="password" required minLength={10} maxLength={128} autoComplete="new-password" className={input} />
-          </label>
-          <label className="text-sm">
-            권한
-            <select name="role" defaultValue="viewer" className={input}>
-              <option value="viewer">조회 전용</option>
-              <option value="admin">관리자</option>
-            </select>
-          </label>
-          <div className="flex items-end">
-            <button type="submit" className="rounded bg-gray-900 px-3 py-1.5 text-sm text-white">
-              만들기
-            </button>
+        <ActionForm action={createUserAction} className="plain-form max-w-4xl rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
+          <div className="grid grid-cols-1 items-end gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="text-sm">
+              <span className={lab}>아이디</span>
+              <input name="username" required minLength={3} maxLength={32} autoComplete="off" className={input} />
+            </label>
+            <label className="text-sm">
+              <span className={lab}>이름</span>
+              <input name="name" required maxLength={50} autoComplete="off" className={input} />
+            </label>
+            <label className="text-sm">
+              <span className={lab}>초기 비밀번호 (10자 이상)</span>
+              <input name="password" type="password" required minLength={10} maxLength={128} autoComplete="new-password" className={input} />
+            </label>
+            <label className="text-sm">
+              <span className={lab}>권한</span>
+              <select name="role" defaultValue="viewer" className={input}>
+                <option value="viewer">조회 전용</option>
+                <option value="admin">관리자</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className={lab}>OTP 인증</span>
+              <select name="otpRequired" defaultValue="on" className={input}>
+                <option value="on">사용 (권장)</option>
+                <option value="off">사용 안 함</option>
+              </select>
+            </label>
+            <div>
+              <button type="submit" className="h-[2.4rem] w-full rounded-lg bg-gray-900 px-4 text-sm font-medium text-white sm:w-auto">
+                만들기
+              </button>
+            </div>
           </div>
         </ActionForm>
       </section>
@@ -68,10 +78,10 @@ export default async function UsersPage() {
             {rows.map((u) => (
               <tr key={u.id} className="border-b border-gray-100 align-top">
                 <td className="py-2 pr-3 font-medium">{u.username}</td>
-                <td className="pr-3">{u.name}</td>
-                <td className="pr-3">{u.role === "admin" ? "관리자" : "조회 전용"}</td>
-                <td className="pr-3">{u.otpEnabled ? "등록됨" : "미등록"}</td>
-                <td className="pr-3">
+                <td className="pr-3 whitespace-nowrap">{u.name}</td>
+                <td className="pr-3 whitespace-nowrap">{u.role === "admin" ? "관리자" : "조회 전용"}</td>
+                <td className="pr-3 whitespace-nowrap">{!u.otpRequired ? <span className="text-amber-700">사용 안 함</span> : u.otpEnabled ? "등록됨" : "미등록"}</td>
+                <td className="pr-3 whitespace-nowrap">
                   {u.locked ? <span className="text-red-600">잠김</span> : `정상 (실패 ${u.failedCount})`}
                 </td>
                 <td className="pr-3">
@@ -82,6 +92,7 @@ export default async function UsersPage() {
                 <td className="pr-3">{fmt(u.lastLoginAt)}</td>
                 <td>
                   <div className="flex flex-wrap gap-1">
+                    <Link href={`/admin/users/${u.id}`} className={btn}>수정</Link>
                     <ActionForm action={setRoleAction} confirmText={`${u.username} 의 권한을 바꿉니다. 계속할까요?`}>
                       <input type="hidden" name="userId" value={u.id} />
                       <input type="hidden" name="role" value={u.role === "admin" ? "viewer" : "admin"} />

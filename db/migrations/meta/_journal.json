@@ -29,6 +29,13 @@
       "when": 1795410869886,
       "tag": "0003_geo",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795441036067,
+      "tag": "0004_otp_required",
+      "breakpoints": true
     }
   ]
 }

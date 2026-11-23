@@ -36,7 +36,7 @@ export async function otpAction(_prev: OtpState, formData: FormData): Promise<Ot
   if (!/^\d{6}$/.test(code)) return { error: "6자리 숫자를 입력하세요." };
 
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.locked) {
+  if (!user || user.locked || !user.otpRequired) {
     jar.delete(PRE_AUTH_COOKIE);
     redirect("/login");
   }

@@ -17,7 +17,7 @@ async function OtpContent() {
 
   const db = getDb();
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.locked) redirect("/login");
+  if (!user || user.locked || !user.otpRequired) redirect("/login");
 
   // 처음 로그인하는 계정이면 OTP 등록 QR을 보여 준다. (새로고침하면 새 QR이 만들어진다)
   const setup = user.otpEnabled ? null : await beginOtpSetup(db, user.id);
