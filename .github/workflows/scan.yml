@@ -14,6 +14,10 @@ on:
         description: "점검할 자산 수 제한 (비우면 전체)"
         required: false
         default: ""
+      asset_ids:
+        description: "선택 자산 번호 (쉼표로 구분, 포털의 '수동 점검' 버튼이 채움. 비우면 전체)"
+        required: false
+        default: ""
 
 concurrency:
   group: scan
@@ -44,3 +48,4 @@ jobs:
           SCAN_SHARD_INDEX: ${{ matrix.shard }}
           SCAN_SHARD_TOTAL: "4"
           SCAN_MAX_ASSETS: ${{ github.event.inputs.max_assets }}
+          SCAN_ASSET_IDS: ${{ github.event.inputs.asset_ids }}

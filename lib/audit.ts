@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = [
   "asset_update",
   "asset_delete",
   "reputation_add",
+  "scan_request",
   "reputation_vt_lookup",
 ] as const;
 

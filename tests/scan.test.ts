@@ -196,6 +196,16 @@ describe("점검 실행·저장", () => {
     expect(await ctx.db.select().from(scanResults)).toHaveLength(2);
   });
 
+  it("수동 점검: 선택한 자산만 점검한다", async () => {
+    const [a] = await ctx.db.insert(assets).values({ name: "A", target: "127.0.0.1", scanLevel: 1, scanPermitted: true }).returning();
+    await ctx.db.insert(assets).values({ name: "B", target: "127.0.0.1", scanLevel: 1, scanPermitted: true });
+    const s = await runScan(ctx.db, { ...opts, portsOverride: [await closedPort()], assetIds: [a.id] });
+    expect(s.scanned).toBe(1);
+    const rows = await ctx.db.select().from(scanResults);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].assetId).toBe(a.id);
+  });
+
   it("점검 날짜는 한국 시간 기준이다", async () => {
     await ctx.db.insert(assets).values({ name: "A", target: "127.0.0.1", scanLevel: 1, scanPermitted: true });
     await runScan(ctx.db, { ...opts, portsOverride: [await closedPort()], now: new Date("2026-11-22T16:00:00Z") }); // KST 11-23 01:00

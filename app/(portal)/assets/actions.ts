@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
+import { inArray } from "drizzle-orm";
+import { assets } from "@/db/schema";
+import { MAX_MANUAL, dispatchScan } from "@/lib/scan-dispatch";
 import { createAsset, deleteAsset, updateAsset, type AssetInput } from "@/lib/assets";
 import { getClientIp } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
@@ -51,4 +54,22 @@ export async function deleteAssetAction(_p: ActionState, fd: FormData): Promise<
   await writeAudit(db, { userId: admin.id, action: "asset_delete", target: r.name, ip: getClientIp(await headers()) });
   revalidatePath("/assets");
   redirect("/assets");
+}
+
+/** 선택한 자산을 지금 점검 (GitHub Actions 실행 요청). 관리자만. */
+export async function requestScanAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids = [...new Set(fd.getAll("ids").map(String))].filter((x) => UUID.test(x));
+  if (ids.length === 0) return { ok: false, message: "점검할 자산을 하나 이상 선택하세요." };
+  if (ids.length > MAX_MANUAL) return { ok: false, message: `한 번에 ${MAX_MANUAL}개까지 선택할 수 있습니다.` };
+  const db = getDb();
+  const rows = await db.select().from(assets).where(inArray(assets.id, ids));
+  const ok = rows.filter((a) => a.enabled && a.scanPermitted);
+  if (ok.length === 0) return { ok: false, message: "선택한 자산은 모두 '점검 사용'이 꺼져 있어 점검할 수 없습니다." };
+  const res = await dispatchScan(ok.map((a) => a.id), process.env.GITHUB_DISPATCH_TOKEN);
+  if (!res.ok) return res;
+  await writeAudit(db, { userId: admin.id, action: "scan_request", target: `${ok.length}개 자산`, detail: { names: ok.slice(0, 20).map((a) => a.name) }, ip: getClientIp(await headers()) });
+  const skipped = ids.length - ok.length;
+  return { ok: true, message: `${ok.length}개 자산의 점검을 요청했습니다.${skipped > 0 ? ` (점검 사용이 꺼진 ${skipped}개는 제외)` : ""} 보통 2~10분 뒤 각 자산 화면에 결과가 나타납니다.` };
 }

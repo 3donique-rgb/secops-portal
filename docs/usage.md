@@ -42,3 +42,10 @@
 2. "VirusTotal에서 분석 보기"를 눌러 새 창에서 결과를 확인합니다.
 3. 아래 "평판 기록하기"에서 판정(악성·의심·정상·미확인)과 메모를 남기면 이력으로 쌓이고, 목록의 "평판" 열에 최근 판정이 표시됩니다.
 4. (선택, 관리자) Vercel 환경변수 `VT_API_KEY`에 VirusTotal 무료 API 키를 넣으면 "API로 자동 조회·기록" 버튼이 켜집니다. 무료 키는 분당 4건·하루 500건 한도이며, 화이트리스트·자산과 일치하는 값은 외부로 보내지 않습니다.
+
+## 수동 점검 설정 (자산 점검 화면의 "선택한 자산 지금 점검" 버튼)
+점검은 GitHub 서버에서 실행되므로, 포털이 GitHub에 실행 신호를 보낼 수 있도록 토큰을 한 번 등록해야 합니다. 토큰은 채팅·문서에 적지 말고 Vercel에만 직접 입력하세요.
+1. GitHub 오른쪽 위 프로필 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+2. Repository access: "Only select repositories"에서 `secops-portal`만 선택. Permissions → Repository permissions → **Actions: Read and write** (다른 권한은 모두 "No access"). 만료일은 90일 등으로 정합니다.
+3. 만들어진 토큰 값을 복사해 Vercel → secops-portal → Settings → Environment Variables에 이름 `GITHUB_DISPATCH_TOKEN`으로 추가(Production 선택)하고 다시 배포(Redeploy)합니다.
+4. 자산 점검 화면에서 자산을 체크하고 버튼을 누르면 2~10분 뒤 각 자산 화면에 결과가 나타납니다. 만료일이 되면 같은 방법으로 토큰을 새로 만들어 교체하세요.

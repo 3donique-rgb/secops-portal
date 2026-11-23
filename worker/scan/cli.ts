@@ -8,9 +8,12 @@ async function main() {
   const total = Number(process.env.SCAN_SHARD_TOTAL ?? "1");
   const max = process.env.SCAN_MAX_ASSETS ? Number(process.env.SCAN_MAX_ASSETS) : undefined;
   if (!Number.isInteger(idx) || !Number.isInteger(total) || total < 1 || idx < 0 || idx >= total) throw new Error("묶음 번호 설정이 올바르지 않습니다.");
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids = (process.env.SCAN_ASSET_IDS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (ids.some((x) => !UUID.test(x))) throw new Error("선택 자산 번호 형식이 올바르지 않습니다.");
   const { db, close } = connect();
   try {
-    const r = await runScan(db, { shard: { index: idx, total }, maxAssets: max && max > 0 ? max : undefined });
+    const r = await runScan(db, { shard: { index: idx, total }, maxAssets: max && max > 0 ? max : undefined, assetIds: ids.length ? ids : undefined });
     console.log(`묶음 ${idx + 1}/${total}: 점검 ${r.scanned}건 (성공 ${r.success}, 일부만 ${r.partial}, 실패 ${r.fail}), 새 알림 ${r.notifications}건`);
   } finally {
     await close();

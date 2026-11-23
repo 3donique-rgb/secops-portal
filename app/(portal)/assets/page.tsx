@@ -1,4 +1,9 @@
 import Link from "next/link";
+import { ActionForm } from "@/components/action-form";
+import { Icon } from "@/components/icons";
+import { SelectAll } from "@/components/select-all";
+import { ACTIONS_URL, MAX_MANUAL } from "@/lib/scan-dispatch";
+import { requestScanAction } from "./actions";
 import { getDb } from "@/db";
 import { listAssets } from "@/lib/assets";
 import { requireUser } from "@/lib/session";
@@ -7,10 +12,62 @@ export const metadata = { title: "자산 - 보안관제 포털" };
 
 export default async function AssetsPage({ searchParams }: { searchParams: Promise<{ q?: string; state?: string }> }) {
   const user = await requireUser();
+  const admin = user.role === "admin";
   const sp = await searchParams;
   const enabled = sp.state === "on" ? true : sp.state === "off" ? false : undefined;
   const rows = await listAssets(getDb(), { keyword: sp.q?.slice(0, 100), enabled });
   const input = "rounded border border-gray-300 px-2 py-1.5 text-sm";
+  const tableEl = (
+      <div className="table-card">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-gray-300 text-left">
+              {admin && (
+                <th className="w-10">
+                  <SelectAll name="ids" label="전체 선택" />
+                </th>
+              )}
+              <th className="py-2 pr-3">자산명</th>
+              <th className="pr-3">점검 대상</th>
+              <th className="pr-3">담당자</th>
+              <th className="pr-3">부서</th>
+              <th className="pr-3">중요도</th>
+              <th className="pr-3">점검 강도</th>
+              <th>상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((a) => (
+              <tr key={a.id} className="border-b border-gray-100">
+                {admin && (
+                  <td>
+                    <input type="checkbox" name="ids" value={a.id} disabled={!a.enabled} aria-label={`${a.name} 선택`} className="h-4 w-4" />
+                  </td>
+                )}
+                <td className="py-1.5 pr-3">
+                  <Link href={`/assets/${a.id}`} className="underline">
+                    {a.name}
+                  </Link>
+                </td>
+                <td className="pr-3 break-all">{a.target}</td>
+                <td className="pr-3">{a.owner ?? ""}</td>
+                <td className="pr-3">{a.department ?? ""}</td>
+                <td className="pr-3">{a.importance}</td>
+                <td className="pr-3">{a.scanLevel}단계</td>
+                <td>{a.enabled ? "사용" : <span className="text-gray-500">안 함</span>}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={admin ? 8 : 7} className="py-6 text-center text-gray-500">
+                  등록된 자산이 없습니다.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+  );
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -36,46 +93,33 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
         </label>
         <button className="rounded bg-gray-900 px-3 py-1.5 text-sm text-white">검색</button>
       </form>
-      <p className="text-sm text-gray-600">총 {rows.length.toLocaleString("ko-KR")}개</p>
-      <div className="table-card">
-        <table className="w-full min-w-[760px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-gray-300 text-left">
-              <th className="py-2 pr-3">자산명</th>
-              <th className="pr-3">점검 대상</th>
-              <th className="pr-3">담당자</th>
-              <th className="pr-3">부서</th>
-              <th className="pr-3">중요도</th>
-              <th className="pr-3">점검 강도</th>
-              <th>상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((a) => (
-              <tr key={a.id} className="border-b border-gray-100">
-                <td className="py-1.5 pr-3">
-                  <Link href={`/assets/${a.id}`} className="underline">
-                    {a.name}
-                  </Link>
-                </td>
-                <td className="pr-3 break-all">{a.target}</td>
-                <td className="pr-3">{a.owner ?? ""}</td>
-                <td className="pr-3">{a.department ?? ""}</td>
-                <td className="pr-3">{a.importance}</td>
-                <td className="pr-3">{a.scanLevel}단계</td>
-                <td>{a.enabled ? "사용" : <span className="text-gray-500">안 함</span>}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="py-6 text-center text-gray-500">
-                  등록된 자산이 없습니다.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {admin ? (
+        <ActionForm action={requestScanAction} className="plain-form space-y-3" confirmText="선택한 자산을 지금 점검합니다. 점검은 GitHub 서버에서 실행되며 대상 장비에 접속 시도가 발생합니다. 진행할까요?">
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="bg-gray-900 inline-flex items-center gap-2 text-sm">
+              <Icon name="trend" size={16} />
+              선택한 자산 지금 점검
+            </button>
+            <p className="text-sm text-gray-600">
+              총 {rows.length.toLocaleString("ko-KR")}개 · 체크한 자산을 바로 점검합니다 (한 번에 최대 {MAX_MANUAL}개, 점검 사용 중인 자산만)
+            </p>
+          </div>
+          <p className="text-xs text-gray-500">
+            결과는 보통 2~10분 뒤 각 자산 화면에 나타납니다. 진행 상황은{" "}
+            <a href={ACTIONS_URL} target="_blank" rel="noopener noreferrer">
+              GitHub 점검 실행 기록
+            </a>
+            에서 볼 수 있습니다.
+            {!process.env.GITHUB_DISPATCH_TOKEN && " (버튼을 쓰려면 먼저 docs/usage.md의 '수동 점검 설정'을 따라 GITHUB_DISPATCH_TOKEN을 등록하세요.)"}
+          </p>
+      {tableEl}
+        </ActionForm>
+      ) : (
+        <>
+          <p className="text-sm text-gray-600">총 {rows.length.toLocaleString("ko-KR")}개</p>
+          {tableEl}
+        </>
+      )}
     </div>
   );
 }

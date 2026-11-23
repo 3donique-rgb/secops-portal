@@ -97,6 +97,8 @@ export type RunOptions = ScanOptions & {
   shard?: { index: number; total: number };
   /** 시험 운영용: 이 수만큼의 자산만 점검 (소수 자산으로 먼저 시험) */
   maxAssets?: number;
+  /** 수동 점검: 이 자산들만 점검 (허가·사용 중인 자산만 해당) */
+  assetIds?: string[];
   /** 한 묶음 안에서 동시에 점검하는 자산 수 */
   parallel?: number;
 };
@@ -112,6 +114,10 @@ export async function runScan(db: Db, opts: RunOptions = {}): Promise<RunSummary
     .from(assets)
     .where(and(eq(assets.enabled, true), eq(assets.scanPermitted, true)))
     .orderBy(asc(assets.createdAt), asc(assets.id));
+  if (opts.assetIds) {
+    const want = new Set(opts.assetIds);
+    list = list.filter((a) => want.has(a.id));
+  }
   if (opts.shard) list = list.filter((_, i) => i % opts.shard!.total === opts.shard!.index);
   if (opts.maxAssets) list = list.slice(0, opts.maxAssets);
 

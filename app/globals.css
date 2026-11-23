@@ -145,6 +145,7 @@ main textarea:focus-visible {
 }
 
 /* 주 버튼: 예전 짙은 회색 버튼을 포털 색으로 통일 */
+main a.bg-gray-900,
 main button.bg-gray-900,
 main button[type="submit"].bg-gray-900 {
   background: var(--signal);
@@ -154,6 +155,7 @@ main button[type="submit"].bg-gray-900 {
   min-height: 2.5rem;
   font-weight: 600;
 }
+main a.bg-gray-900:hover,
 main button.bg-gray-900:hover {
   background: #0b6564;
 }
