@@ -4,11 +4,14 @@
  * 2) 아직 국가를 모르는 IP 를 RDAP(whois 후속 표준)으로 조회해 "IP 대역 → 국가"로 저장한다.
  *    같은 대역의 다른 IP 는 저장된 대역을 재사용하므로 조회 수가 크게 줄어든다.
  */
-import dns from "node:dns/promises";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { domainIps, indicators, netRanges } from "../../db/schema";
 
+/** 여러 DNS 서버 조회 방식을 도입한 시각(UTC). 이보다 전에 "DNS에 없음"으로 기록된 도메인은 다시 확인한다 */
+const RECHECK_UNRESOLVED_BEFORE = new Date("2026-11-23T13:30:00Z");
+
 const DELEGATED_LABEL = (label: string) => `${label} 할당 대역`;
+import { resolveDomainMulti } from "../../lib/dns-multi";
 import { DELEGATED_FILES, parseDelegated } from "../../lib/delegated";
 import { ipv4ToNum, lookupRdap, numToIpv4 } from "../../lib/geo";
 import type { Db } from "../../lib/indicators";
@@ -27,16 +30,16 @@ export type EnrichOptions = {
   delegatedMaxAgeDays?: number;
   dnsConcurrency?: number;
   rdapConcurrency?: number;
+  /** 시험용: 지정하면 여러 DNS 서버 조회 대신 이 함수로 IP 를 구한다 */
   resolve4?: (domain: string) => Promise<string[]>;
+  /** 시험용: 서버별 조회 함수 (server 가 null 이면 시스템 기본 DNS) */
+  resolveVia?: (server: string | null, domain: string) => Promise<string[]>;
+  /** 이 시각보다 전에 "DNS에 없음"으로 기록된 도메인은 (조회 방식이 개선되었으므로) 7일을 기다리지 않고 다시 확인 */
+  recheckUnresolvedBefore?: Date;
   fetchImpl?: typeof fetch;
   now?: Date;
 };
-export type EnrichSummary = { resolved: number; unresolved: number; rdapLookups: number; ranges: number; delegatedRanges: number; stopped: string | null };
-
-const defaultResolve4 = async (d: string) => {
-  const r = new dns.Resolver({ timeout: 2500, tries: 1 });
-  return r.resolve4(d);
-};
+export type EnrichSummary = { resolved: number; unresolved: number; rdapLookups: number; ranges: number; delegatedRanges: number; byResolver: Record<string, number>; stopped: string | null };
 
 async function pool<T>(items: T[], size: number, fn: (x: T) => Promise<void>, deadline = Infinity) {
   let i = 0;
@@ -49,8 +52,8 @@ async function pool<T>(items: T[], size: number, fn: (x: T) => Promise<void>, de
 
 export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<EnrichSummary> {
   const now = opts.now ?? new Date();
-  const out: EnrichSummary = { resolved: 0, unresolved: 0, rdapLookups: 0, ranges: 0, delegatedRanges: 0, stopped: null };
-  const resolve4 = opts.resolve4 ?? defaultResolve4;
+  const out: EnrichSummary = { resolved: 0, unresolved: 0, rdapLookups: 0, ranges: 0, delegatedRanges: 0, byResolver: {}, stopped: null };
+  const recheckBefore = opts.recheckUnresolvedBefore ?? RECHECK_UNRESOLVED_BEFORE;
 
   // 1) 도메인 → IP (처음, 또는 IP는 30일·못 찾은 것은 7일이 지나 다시 확인)
   const day = 24 * 3600 * 1000;
@@ -65,20 +68,25 @@ export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<Enric
         or(
           isNull(domainIps.indicatorId),
           and(eq(domainIps.status, "ok"), lt(domainIps.resolvedAt, new Date(now.getTime() - 30 * day))),
-          and(eq(domainIps.status, "unresolved"), lt(domainIps.resolvedAt, new Date(now.getTime() - 7 * day))),
+          and(eq(domainIps.status, "unresolved"), or(lt(domainIps.resolvedAt, new Date(now.getTime() - 7 * day)), lt(domainIps.resolvedAt, recheckBefore))),
         ),
       ),
     )
     .orderBy(sql`${domainIps.resolvedAt} asc nulls first`, sql`${indicators.lastSeenAt} desc`)
     .limit(opts.maxDomains ?? 5000);
   await pool(doms, opts.dnsConcurrency ?? 100, async (d) => {
-    let ips: string[] = [];
-    try {
-      ips = await resolve4(d.value);
-    } catch {
-      ips = [];
+    let ip: string | null = null;
+    if (opts.resolve4) {
+      try {
+        ip = (await opts.resolve4(d.value)).find((x) => ipv4ToNum(x) !== null) ?? null;
+      } catch {
+        ip = null;
+      }
+    } else {
+      const a = await resolveDomainMulti(d.value, opts.resolveVia);
+      ip = a.ip;
+      if (a.via) out.byResolver[a.via] = (out.byResolver[a.via] ?? 0) + 1;
     }
-    const ip = ips.find((x) => ipv4ToNum(x) !== null) ?? null;
     const row = ip ? { status: "ok" as const, ip, ipNum: ipv4ToNum(ip), resolvedAt: now } : { status: "unresolved" as const, ip: null, ipNum: null, resolvedAt: now };
     await db
       .insert(domainIps)

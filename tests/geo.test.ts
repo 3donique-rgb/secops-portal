@@ -126,7 +126,7 @@ describe("도메인 IP·국가 채우기", () => {
     await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
     let dnsCalls = 0;
     let rdapCalls = 0;
-    const r = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4: async (d) => (dnsCalls++, resolve4(d)), fetchImpl: rdapFetch(() => (rdapCalls++, { status: 200, body: good })) });
+    const r = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, recheckUnresolvedBefore: new Date(0), resolve4: async (d) => (dnsCalls++, resolve4(d)), fetchImpl: rdapFetch(() => (rdapCalls++, { status: 200, body: good })) });
     expect(r.resolved + r.unresolved).toBe(0);
     expect(dnsCalls + rdapCalls).toBe(0);
   });
@@ -168,6 +168,26 @@ describe("도메인 IP·국가 채우기", () => {
     const row = (await ctx.db.select().from(indicators)).find((x) => x.value === "58.1.0.7")!;
     const m = await geoForIndicators(ctx.db, [row]);
     expect(m.get(row.id)).toMatchObject({ countryCode: "JP", netName: "작은 대역" });
+  });
+
+  it("여러 DNS 서버로 찾고, 예전에 '없음'으로 기록된 도메인도 다시 확인한다", async () => {
+    const f = rdapFetch(() => ({ status: 200, body: good }));
+    // 1) 예전 방식: 아무 서버에서도 못 찾음 → 없음
+    await runEnrich(ctx.db, { delegated: false, rdapDelayMs: 0, fetchImpl: f, resolveVia: async () => Promise.reject(new Error("x")) });
+    let rows = await ctx.db.select().from(domainIps);
+    expect(rows.every((r) => r.status === "unresolved")).toBe(true);
+    // 2) 개선된 조회: 구글 서버가 답한다. 기록 시각이 기준 시각보다 앞서면 7일 전이라도 다시 확인
+    const r = await runEnrich(ctx.db, {
+      delegated: false,
+      rdapDelayMs: 0,
+      fetchImpl: f,
+      recheckUnresolvedBefore: new Date(Date.now() + 60_000),
+      resolveVia: async (s, d) => (s === "8.8.8.8" ? [d === "a.example" ? "58.1.1.1" : "58.2.2.2"] : Promise.reject(new Error("x"))),
+    });
+    expect(r.resolved).toBe(3);
+    expect(r.byResolver).toEqual({ Google: 3 });
+    rows = await ctx.db.select().from(domainIps);
+    expect(rows.filter((x) => x.status === "ok")).toHaveLength(3);
   });
 
   it("RIR 국가 목록으로 RDAP 없이 국가를 채운다", async () => {
