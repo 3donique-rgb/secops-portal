@@ -20,6 +20,6 @@ export async function createTestDb() {
 /** 시험 사이에 데이터를 모두 비운다. */
 export async function resetData(client: PGlite) {
   await client.exec(
-    "truncate table indicator_sources, indicators, collect_runs, sources, whitelist, notifications, scan_results, assets, audit_logs, api_keys, user_allowed_ips, users restart identity cascade",
+    "truncate table net_ranges, indicator_sources, indicators, collect_runs, sources, whitelist, notifications, scan_results, assets, audit_logs, api_keys, user_allowed_ips, users restart identity cascade",
   );
 }

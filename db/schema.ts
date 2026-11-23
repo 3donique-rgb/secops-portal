@@ -4,6 +4,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -356,4 +357,37 @@ export const indicatorReputations = pgTable(
     index("indicator_reputations_indicator_idx").on(t.indicatorId, t.createdAt),
     check("indicator_reputations_origin_ck", sql`${t.origin} in ('manual', 'virustotal')`),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// 1.8 도메인이 가리키는 IP, 그리고 IP 대역의 국가 정보 (whois 후속 표준 RDAP 조회 결과)
+// ---------------------------------------------------------------------------
+export const domainIps = pgTable(
+  "domain_ips",
+  {
+    indicatorId: uuid()
+      .primaryKey()
+      .references(() => indicators.id, { onDelete: "cascade" }),
+    /** ok = IP를 찾음, unresolved = DNS에 없음(사라진 도메인 등) */
+    status: text().notNull(),
+    ip: text(),
+    /** IPv4를 숫자로 바꾼 값 (대역 비교용) */
+    ipNum: bigint({ mode: "number" }),
+    resolvedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("domain_ips_status_ck", sql`${t.status} in ('ok', 'unresolved')`), index("domain_ips_resolved_idx").on(t.resolvedAt)],
+);
+
+export const netRanges = pgTable(
+  "net_ranges",
+  {
+    id: id(),
+    startNum: bigint({ mode: "number" }).notNull(),
+    endNum: bigint({ mode: "number" }).notNull(),
+    /** 두 글자 국가 코드 (KR, US ...). 알 수 없으면 비어 있음 */
+    countryCode: text(),
+    netName: text(),
+    fetchedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("net_ranges_range_uq").on(t.startNum, t.endNum), index("net_ranges_start_idx").on(t.startNum, t.endNum)],
 );

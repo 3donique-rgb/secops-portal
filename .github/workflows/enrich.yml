@@ -1,0 +1,32 @@
+# IP·국가 확인: 1시간마다 도메인의 IP(DNS)와 IP 대역의 국가(RDAP, whois 후속 표준)를 채운다.
+# 한 번에 도메인 5,000개·RDAP 600회까지 처리하므로, 처음 쌓인 수만 건은 며칠에 걸쳐 채워진다.
+# 필요한 Secrets: DATABASE_URL
+name: IP·국가 확인
+
+on:
+  schedule:
+    - cron: "47 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: enrich
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 확인 실행
+        run: npm run enrich
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -5,6 +5,8 @@ import { INDICATOR_TYPES, listSourceNames, searchIndicators } from "@/lib/indica
 import { VerdictBadge } from "@/components/verdict-badge";
 import { TYPE_LABEL } from "@/lib/labels";
 import { latestVerdicts } from "@/lib/reputation";
+import { CountryFlag } from "@/components/country-flag";
+import { countryName, geoForIndicators, type GeoRow } from "@/lib/geo";
 import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "위협정보 - 보안관제 포털" };
@@ -22,6 +24,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
     listSourceNames(db),
   ]);
   const verdicts = await latestVerdicts(db, rows.map((r) => r.id));
+  const geo = await geoForIndicators(db, rows);
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
   const pageHref = (p: number) => {
@@ -100,11 +103,14 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
 
       <p className="text-sm text-gray-600">총 {total.toLocaleString("ko-KR")}건</p>
       <div className="table-card">
-        <table className="min-w-[900px]">
+        <table className="min-w-[1100px]">
           <thead>
             <tr className="border-b border-gray-300 text-left">
               <th className="py-2 pr-3">종류</th>
               <th className="pr-3">값</th>
+              <th className="pr-3">IP 주소</th>
+              <th className="pr-3">국가</th>
+              <th className="pr-3">국기</th>
               <th className="pr-3">제공 기관</th>
               <th className="pr-3">최초 확인</th>
               <th className="pr-3">최종 확인</th>
@@ -119,11 +125,12 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
                   {TYPE_LABEL[r.type]}
                   {r.hashKind && <span className="ml-1 text-xs text-gray-500">{r.hashKind}</span>}
                 </td>
-                <td className="pr-3 break-all">
+                <td className="min-w-[13rem] pr-3 break-all">
                   <Link href={`/indicators/${r.id}`} className="underline">
                     {r.value}
                   </Link>
                 </td>
+                <GeoCells g={geo.get(r.id)} />
                 <td className="pr-3">{r.sourceNames.join(", ")}</td>
                 <td className="pr-3 whitespace-nowrap">{fmt(r.firstSeenAt)}</td>
                 <td className="pr-3 whitespace-nowrap">{fmt(r.lastSeenAt)}</td>
@@ -136,7 +143,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-gray-500">
+                <td colSpan={10} className="py-6 text-center text-gray-500">
                   조건에 맞는 위협정보가 없습니다.
                 </td>
               </tr>
@@ -152,5 +159,22 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
         {page < pages && <Link href={pageHref(page + 1)} className="underline">다음</Link>}
       </div>
     </div>
+  );
+}
+
+const dash = <span className="text-[var(--ink-soft)]">-</span>;
+
+/** IP 주소 · 국가 코드 · 국기 세 칸 */
+function GeoCells({ g }: { g: GeoRow | undefined }) {
+  if (!g || g.state === "none") return (<><td>{dash}</td><td>{dash}</td><td>{dash}</td></>);
+  const note = g.state === "unresolved" ? "DNS에 없음" : g.state === "pending" ? "확인 대기" : null;
+  return (
+    <>
+      <td className="font-mono text-[13px] whitespace-nowrap">{g.ip ?? <span className="font-sans text-xs text-[var(--ink-soft)]">{note}</span>}</td>
+      <td className="whitespace-nowrap" title={countryName(g.countryCode) || g.netName || undefined}>
+        {g.countryCode ? <b>{g.countryCode}</b> : g.ip ? <span className="text-xs text-[var(--ink-soft)]">{g.state === "pending" ? "확인 대기" : "알 수 없음"}</span> : dash}
+      </td>
+      <td>{g.countryCode ? <CountryFlag code={g.countryCode} /> : dash}</td>
+    </>
   );
 }

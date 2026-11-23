@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { Icon } from "@/components/icons";
+import { CountryFlag } from "@/components/country-flag";
 import { VerdictBadge } from "@/components/verdict-badge";
+import { countryName, geoForIndicators } from "@/lib/geo";
 import { getDb } from "@/db";
 import { getIndicatorDetail } from "@/lib/indicator-query";
 import { TYPE_LABEL } from "@/lib/labels";
@@ -38,6 +40,7 @@ export default async function IndicatorDetailPage({ params }: { params: Promise<
   if (!detail) notFound();
   const { indicator: i, sources } = detail;
   const reps = await listReputations(db, id);
+  const g = (await geoForIndicators(db, [{ id, type: i.type, value: i.value }])).get(id);
   const latest = reps[0];
   const vtUrl = vtGuiUrl({ type: i.type, value: i.value });
   const vtReady = Boolean(process.env.VT_API_KEY);
@@ -72,6 +75,23 @@ export default async function IndicatorDetailPage({ params }: { params: Promise<
             <dt className="text-xs text-[var(--ink-soft)]">SIEM 제공</dt>
             <dd>{i.excluded ? "제외됨 (데이터는 보관 중)" : "제공 대상"}</dd>
           </div>
+          {g && g.state !== "none" && (
+            <div className="sm:col-span-3">
+              <dt className="text-xs text-[var(--ink-soft)]">{i.type === "domain" ? "도메인이 가리키는 IP · 국가" : "IP 국가"}</dt>
+              <dd className="flex flex-wrap items-center gap-2">
+                {g.ip ? <span className="font-mono">{g.ip}</span> : <span className="text-[var(--ink-soft)]">{g.state === "unresolved" ? "DNS에 없음" : "확인 대기 중"}</span>}
+                {g.countryCode && (
+                  <>
+                    <CountryFlag code={g.countryCode} />
+                    <span>
+                      {countryName(g.countryCode)} ({g.countryCode})
+                    </span>
+                  </>
+                )}
+                {g.netName && <span className="text-xs text-[var(--ink-soft)]">망 이름 {g.netName}</span>}
+              </dd>
+            </div>
+          )}
           {i.memo && (
             <div className="sm:col-span-3">
               <dt className="text-xs text-[var(--ink-soft)]">메모</dt>
