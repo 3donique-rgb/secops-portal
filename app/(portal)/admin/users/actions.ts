@@ -9,6 +9,7 @@ import { requireAdmin } from "@/lib/session";
 import {
   addAllowedIp,
   createUser,
+  deleteUsers,
   removeAllowedIp,
   resetOtp,
   setUserRole,
@@ -126,4 +127,16 @@ export async function updateUserAction(_p: ActionState, fd: FormData): Promise<A
   revalidatePath("/admin/users");
   revalidatePath(`/admin/users/${userId}`);
   return done(password ? "저장했습니다. 비밀번호도 변경했습니다." : "저장했습니다.");
+}
+
+export async function deleteUsersAction(_p: ActionState, fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const db = getDb();
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids = fd.getAll("ids").map(String).filter((x) => UUID.test(x)).slice(0, 100);
+  const r = await deleteUsers(db, ids, admin.id);
+  if (!r.ok) return fail(r.message);
+  await writeAudit(db, { userId: admin.id, action: "user_delete", target: r.deleted.slice(0, 20).join(", "), detail: { count: r.deleted.length }, ip: getClientIp(await headers()) });
+  revalidatePath("/admin/users");
+  return done(`${r.deleted.length}개 계정을 삭제했습니다.${r.skippedSelf ? " (본인 계정은 제외)" : ""}`);
 }

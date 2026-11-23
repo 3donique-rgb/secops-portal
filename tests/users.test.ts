@@ -6,6 +6,7 @@ import { listAudit, writeAudit } from "../lib/audit";
 import {
   addAllowedIp,
   createUser,
+  deleteUsers,
   listAllowedIps,
   listUsers,
   removeAllowedIp,
@@ -173,5 +174,26 @@ describe("계정 수정·OTP 사용 여부", () => {
     // 관리자가 둘일 때만 낮출 수 있고, 마지막 관리자는 거부
     expect((await updateUser(ctx.db, b, { name: "x", role: "viewer", otpRequired: true })).ok).toBe(true);
     expect((await updateUser(ctx.db, a, { name: "adm", role: "viewer", otpRequired: true })).ok).toBe(false);
+  });
+});
+
+describe("계정 삭제", () => {
+  it("여러 명 삭제, 본인 제외, 마지막 관리자 보호, 감사 로그 유지", async () => {
+    const a1 = await mk("adm1", "admin");
+    const a2 = await mk("adm2", "admin");
+    const u1 = await mk("user1");
+    const u2 = await mk("user2");
+    await writeAudit(ctx.db, { userId: u1, action: "login_success" });
+    expect((await deleteUsers(ctx.db, [], a1)).ok).toBe(false);
+    expect((await deleteUsers(ctx.db, [a1], a1)).ok).toBe(false);
+    expect((await deleteUsers(ctx.db, [a1, a2], u1)).ok).toBe(false); // 관리자가 0명이 됨
+    const r = await deleteUsers(ctx.db, [u1, u2, a1], a1);
+    expect(r.ok && r.deleted.sort()).toEqual(["user1", "user2"]);
+    expect(r.ok && r.skippedSelf).toBe(true);
+    expect((await listUsers(ctx.db)).map((u) => u.username)).toEqual(["adm1", "adm2"]);
+    expect((await deleteUsers(ctx.db, [a2], a1)).ok).toBe(true); // 본인(a1)이 남으니 가능
+    const left = await ctx.db.select().from((await import("../db/schema")).auditLogs);
+    expect(left.length).toBe(1);
+    expect(left[0].userId).toBeNull();
   });
 });

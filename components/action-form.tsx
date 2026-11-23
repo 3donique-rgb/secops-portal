@@ -11,15 +11,18 @@ export function ActionForm({
   children,
   className,
   confirmText,
+  id,
 }: {
   action: Action;
   children: React.ReactNode;
   className?: string;
   confirmText?: string;
+  id?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   return (
     <form
+      id={id}
       action={formAction}
       className={className}
       onSubmit={(e) => {

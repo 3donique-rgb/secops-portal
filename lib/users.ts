@@ -1,5 +1,5 @@
 /** 관리자 화면의 사용자 관리: 생성, 권한 변경, 잠금 해제, OTP 초기화, 허용 IP. 호출 전에 관리자 권한을 확인해야 한다. */
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { userAllowedIps, users } from "../db/schema";
 import { hashPassword, resetUserOtp, unlockUser, validatePassword } from "./auth";
 import { canonicalCidr } from "./cidr";
@@ -71,6 +71,22 @@ export async function updateUser(
   }
   await db.update(users).set(set).where(eq(users.id, userId));
   return { ok: true };
+}
+
+/**
+ * 계정 삭제(여러 명). 본인 계정은 건너뛰고, 관리자가 한 명도 남지 않게 되는 삭제는 거부한다.
+ * 감사 로그는 사용자 칸만 비워지고 그대로 남는다.
+ */
+export async function deleteUsers(db: Db, ids: string[], actingId: string): Promise<Result<{ deleted: string[]; skippedSelf: boolean }>> {
+  const targetIds = [...new Set(ids)].filter((i) => i !== actingId);
+  const skippedSelf = targetIds.length !== new Set(ids).size;
+  if (targetIds.length === 0) return { ok: false, message: skippedSelf ? "본인 계정은 삭제할 수 없습니다." : "삭제할 계정을 선택하세요." };
+  const targets = await db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(inArray(users.id, targetIds));
+  if (targets.length === 0) return { ok: false, message: "선택한 계정을 찾을 수 없습니다." };
+  const [{ n: admins }] = await db.select({ n: sql<number>`count(*)::int` }).from(users).where(eq(users.role, "admin"));
+  if (admins - targets.filter((t) => t.role === "admin").length < 1) return { ok: false, message: "관리자가 한 명도 남지 않게 되므로 삭제할 수 없습니다." };
+  await db.delete(users).where(inArray(users.id, targets.map((t) => t.id)));
+  return { ok: true, deleted: targets.map((t) => t.username), skippedSelf };
 }
 
 /** 마지막 관리자를 viewer로 낮추는 것은 막는다 (아무도 관리할 수 없게 되므로). */

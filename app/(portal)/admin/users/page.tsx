@@ -3,7 +3,8 @@ import { getDb } from "@/db";
 import { ActionForm } from "@/components/action-form";
 import { listUsers } from "@/lib/users";
 import { requireAdmin } from "@/lib/session";
-import { createUserAction, resetOtpAction, setRoleAction, unlockAction } from "./actions";
+import { SelectAll } from "@/components/select-all";
+import { createUserAction, deleteUsersAction, resetOtpAction, setRoleAction, unlockAction } from "./actions";
 
 export const metadata = { title: "사용자 관리 - 보안관제 포털" };
 
@@ -60,10 +61,20 @@ export default async function UsersPage() {
         </ActionForm>
       </section>
 
+      <section className="space-y-2">
+        <ActionForm id="user-bulk" action={deleteUsersAction} confirmText="선택한 계정을 삭제합니다. 되돌릴 수 없습니다. 계속할까요?" className="plain-form flex flex-wrap items-center gap-3">
+          <button type="submit" className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">
+            선택한 계정 삭제
+          </button>
+          <span className="text-xs text-gray-500">본인 계정과 마지막 관리자는 삭제할 수 없습니다. 감사 로그는 남습니다.</span>
+        </ActionForm>
+      </section>
+
       <section className="table-card">
-        <table className="w-full min-w-[860px] border-collapse text-sm">
+        <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-gray-300 text-left">
+              <th className="w-8 py-2 pr-2"><SelectAll name="ids" formId="user-bulk" label="전체 선택" /></th>
               <th className="py-2 pr-3">아이디</th>
               <th className="pr-3">이름</th>
               <th className="pr-3">권한</th>
@@ -77,6 +88,9 @@ export default async function UsersPage() {
           <tbody>
             {rows.map((u) => (
               <tr key={u.id} className="border-b border-gray-100 align-top">
+                <td className="py-2 pr-2">
+                  <input type="checkbox" name="ids" value={u.id} form="user-bulk" disabled={u.id === me.id} title={u.id === me.id ? "본인 계정은 삭제할 수 없습니다" : undefined} aria-label={`${u.username} 선택`} className="h-4 w-4" />
+                </td>
                 <td className="py-2 pr-3 font-medium">{u.username}</td>
                 <td className="pr-3 whitespace-nowrap">{u.name}</td>
                 <td className="pr-3 whitespace-nowrap">{u.role === "admin" ? "관리자" : "조회 전용"}</td>
