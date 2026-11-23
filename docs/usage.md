@@ -49,3 +49,10 @@
 2. Repository access: "Only select repositories"에서 `secops-portal`만 선택. Permissions → Repository permissions → **Actions: Read and write** (다른 권한은 모두 "No access"). 만료일은 90일 등으로 정합니다.
 3. 만들어진 토큰 값을 복사해 Vercel → secops-portal → Settings → Environment Variables에 이름 `GITHUB_DISPATCH_TOKEN`으로 추가(Production 선택)하고 다시 배포(Redeploy)합니다.
 4. 자산 점검 화면에서 자산을 체크하고 버튼을 누르면 2~10분 뒤 각 자산 화면에 결과가 나타납니다. 만료일이 되면 같은 방법으로 토큰을 새로 만들어 교체하세요.
+
+## VirusTotal 자동 조회 (사람이 누르지 않아도 평판을 가져오기)
+- GitHub Actions "VirusTotal 자동 조회"가 3시간마다 최대 50건, 하루 최대 400건을 조회해 평판을 기록합니다 (무료 키 한도 분당 4건·하루 500건 보호).
+- 대상: 활성 · SIEM 제외가 아닌 · IP/해시/도메인 · 아직 평판 기록이 없는 값 (IP → 해시 → 도메인 순, 최근 확인된 것부터). 화이트리스트·자산과 일치하는 값은 보내지 않습니다.
+- 켜는 법: 저장소 Settings → Secrets and variables → Actions → New repository secret에 이름 `VT_API_KEY`, 값에 VirusTotal API 키를 **직접** 입력합니다. (상세 화면의 수동 "API로 자동 조회" 버튼을 쓰려면 Vercel에도 같은 이름으로 넣어야 합니다.)
+- 결과는 상세 화면의 "평판 기록 이력"(출처: VirusTotal API, 메모 "자동 조회")과 목록의 "평판" 열에 나타납니다.
+- 주의: VirusTotal 무료 API는 상업적 사용이 제한됩니다. 조직의 정식 업무에 쓰기 전에 VirusTotal 이용 약관을 확인하세요.

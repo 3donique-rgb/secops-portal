@@ -66,7 +66,7 @@ export function verdictFromStats(s: VtStats): Verdict {
 
 export type VtResult =
   | { ok: true; stats: VtStats; verdict: Verdict }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code: "no_key" | "unsupported" | "network" | "not_found" | "rate_limit" | "auth" | "error" };
 
 /** VirusTotal API v3 조회. fetchImpl은 시험용. */
 export async function lookupVirusTotal(
@@ -74,9 +74,9 @@ export async function lookupVirusTotal(
   apiKey: string | undefined,
   fetchImpl: typeof fetch = fetch,
 ): Promise<VtResult> {
-  if (!apiKey) return { ok: false, message: "VirusTotal API 키가 설정되지 않았습니다. 아래 안내를 따라 키를 등록하세요." };
+  if (!apiKey) return { ok: false, message: "VirusTotal API 키가 설정되지 않았습니다. 아래 안내를 따라 키를 등록하세요.", code: "no_key" };
   const url = vtApiUrl(t);
-  if (!url) return { ok: false, message: "이 종류의 값은 VirusTotal로 조회할 수 없습니다." };
+  if (!url) return { ok: false, message: "이 종류의 값은 VirusTotal로 조회할 수 없습니다.", code: "unsupported" };
   let res: Response;
   try {
     res = await fetchImpl(url, {
@@ -85,12 +85,12 @@ export async function lookupVirusTotal(
       cache: "no-store",
     });
   } catch {
-    return { ok: false, message: "VirusTotal에 연결하지 못했습니다. 잠시 뒤 다시 시도하세요." };
+    return { ok: false, message: "VirusTotal에 연결하지 못했습니다. 잠시 뒤 다시 시도하세요.", code: "network" };
   }
-  if (res.status === 404) return { ok: false, message: "VirusTotal에 아직 등록되지 않은 값입니다. (분석 이력 없음)" };
-  if (res.status === 429) return { ok: false, message: "VirusTotal 조회 한도(무료: 분당 4건, 하루 500건)를 넘었습니다. 잠시 뒤 다시 시도하세요." };
-  if (res.status === 401 || res.status === 403) return { ok: false, message: "VirusTotal API 키가 거절되었습니다. 키를 확인하세요." };
-  if (!res.ok) return { ok: false, message: `VirusTotal이 오류를 돌려줬습니다 (HTTP ${res.status}).` };
+  if (res.status === 404) return { ok: false, message: "VirusTotal에 아직 등록되지 않은 값입니다. (분석 이력 없음)", code: "not_found" };
+  if (res.status === 429) return { ok: false, message: "VirusTotal 조회 한도(무료: 분당 4건, 하루 500건)를 넘었습니다. 잠시 뒤 다시 시도하세요.", code: "rate_limit" };
+  if (res.status === 401 || res.status === 403) return { ok: false, message: "VirusTotal API 키가 거절되었습니다. 키를 확인하세요.", code: "auth" };
+  if (!res.ok) return { ok: false, message: `VirusTotal이 오류를 돌려줬습니다 (HTTP ${res.status}).`, code: "error" };
   try {
     const body = (await res.json()) as { data?: { attributes?: Record<string, unknown> } };
     const a = body.data?.attributes ?? {};
@@ -105,7 +105,7 @@ export async function lookupVirusTotal(
     };
     return { ok: true, stats, verdict: verdictFromStats(stats) };
   } catch {
-    return { ok: false, message: "VirusTotal 응답을 읽지 못했습니다." };
+    return { ok: false, message: "VirusTotal 응답을 읽지 못했습니다.", code: "error" };
   }
 }
 
