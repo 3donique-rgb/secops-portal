@@ -103,14 +103,13 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
 
       <p className="text-sm text-gray-600">총 {total.toLocaleString("ko-KR")}건</p>
       <div className="table-card">
-        <table className="min-w-[1100px]">
+        <table className="min-w-[1000px]">
           <thead>
             <tr className="border-b border-gray-300 text-left">
               <th className="py-2 pr-3">종류</th>
               <th className="pr-3">값</th>
               <th className="pr-3">IP 주소</th>
               <th className="pr-3">국가</th>
-              <th className="pr-3">국기</th>
               <th className="pr-3">제공 기관</th>
               <th className="pr-3">최초 확인</th>
               <th className="pr-3">최종 확인</th>
@@ -143,7 +142,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center text-gray-500">
+                <td colSpan={9} className="py-6 text-center text-gray-500">
                   조건에 맞는 위협정보가 없습니다.
                 </td>
               </tr>
@@ -164,17 +163,31 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
 
 const dash = <span className="text-[var(--ink-soft)]">-</span>;
 
-/** IP 주소 · 국가 코드 · 국기 세 칸 */
+/** IP 주소 · 국가(국기 아이콘 + 국가 코드) 두 칸 */
 function GeoCells({ g }: { g: GeoRow | undefined }) {
-  if (!g || g.state === "none") return (<><td>{dash}</td><td>{dash}</td><td>{dash}</td></>);
+  if (!g || g.state === "none")
+    return (
+      <>
+        <td>{dash}</td>
+        <td>{dash}</td>
+      </>
+    );
   const note = g.state === "unresolved" ? "DNS에 없음" : g.state === "pending" ? "확인 대기" : null;
   return (
     <>
       <td className="font-mono text-[13px] whitespace-nowrap">{g.ip ?? <span className="font-sans text-xs text-[var(--ink-soft)]">{note}</span>}</td>
       <td className="whitespace-nowrap" title={countryName(g.countryCode) || g.netName || undefined}>
-        {g.countryCode ? <b>{g.countryCode}</b> : g.ip ? <span className="text-xs text-[var(--ink-soft)]">{g.state === "pending" ? "확인 대기" : "알 수 없음"}</span> : dash}
+        {g.countryCode ? (
+          <span className="inline-flex items-center gap-2">
+            <CountryFlag code={g.countryCode} />
+            <b>{g.countryCode}</b>
+          </span>
+        ) : g.ip ? (
+          <span className="text-xs text-[var(--ink-soft)]">{g.state === "pending" ? "확인 대기" : "알 수 없음"}</span>
+        ) : (
+          dash
+        )}
       </td>
-      <td>{g.countryCode ? <CountryFlag code={g.countryCode} /> : dash}</td>
     </>
   );
 }
