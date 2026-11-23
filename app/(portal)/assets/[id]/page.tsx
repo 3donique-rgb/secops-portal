@@ -93,7 +93,7 @@ export default async function AssetDetailPage({ params, searchParams }: { params
         </div>
         {!shown ? (
           <p className="px-5 py-8 text-center text-sm text-[var(--ink-soft)]">
-            아직 점검 결과가 없습니다. 점검은 매일 새벽에 자동으로 실행되며, “자산 점검” 작업을 수동으로 실행할 수도 있습니다.
+            아직 점검 결과가 없습니다. 점검은 매일 새벽에 자동으로 실행되며, “자산점검” 작업을 수동으로 실행할 수도 있습니다.
           </p>
         ) : (
           <div className="space-y-5 px-5 py-4 text-sm">
