@@ -4,6 +4,8 @@ import { parseIndicatorParams, type RawParams } from "@/lib/indicator-params";
 import { INDICATOR_TYPES, listSourceNames, searchIndicators } from "@/lib/indicator-query";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { TYPE_LABEL } from "@/lib/labels";
+import { Pagination } from "@/components/pagination";
+import { parsePageSize, totalPages } from "@/lib/pagination";
 import { latestVerdicts } from "@/lib/reputation";
 import { CountryFlag } from "@/components/country-flag";
 import { countryName, geoForIndicators, type GeoRow } from "@/lib/geo";
@@ -11,7 +13,7 @@ import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "위협정보 - 보안관제 포털" };
 
-const PAGE_SIZE = 50;
+const DEFAULT_SIZE = 50;
 const fmt = (d: Date) => d.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
 
 export default async function IndicatorsPage({ searchParams }: { searchParams: Promise<RawParams> }) {
@@ -19,32 +21,32 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const { filter, page } = parseIndicatorParams(sp);
   const db = getDb();
-  const [{ rows, total }, sourceNames] = await Promise.all([
-    searchIndicators(db, filter, { page, pageSize: PAGE_SIZE }),
-    listSourceNames(db),
-  ]);
+  const size = parsePageSize(sp.size, DEFAULT_SIZE);
+  const first = await searchIndicators(db, filter, { page, pageSize: size });
+  const pages = totalPages(first.total, size);
+  // 마지막 쪽보다 큰 번호를 입력하면 마지막 쪽을 보여 준다
+  const shown = page > pages ? await searchIndicators(db, filter, { page: pages, pageSize: size }) : first;
+  const { rows, total } = shown;
+  const curPage = Math.min(page, pages);
+  const sourceNames = await listSourceNames(db);
   const verdicts = await latestVerdicts(db, rows.map((r) => r.id));
   const geo = await geoForIndicators(db, rows);
-  const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
-  const pageHref = (p: number) => {
-    const u = new URLSearchParams();
-    for (const t of filter.types ?? []) u.append("type", t);
-    if (filter.status) u.set("status", filter.status);
-    if (filter.sourceName) u.set("source", filter.sourceName);
-    if (filter.keyword) u.set("q", filter.keyword);
-    if (one(sp.from)) u.set("from", one(sp.from));
-    if (one(sp.to)) u.set("to", one(sp.to));
-    if (filter.excluded) u.set("excluded", filter.excluded);
-    u.set("page", String(p));
-    return `?${u.toString()}`;
-  };
+  const baseParams: [string, string][] = [];
+  for (const t of filter.types ?? []) baseParams.push(["type", t]);
+  if (filter.status) baseParams.push(["status", filter.status]);
+  if (filter.sourceName) baseParams.push(["source", filter.sourceName]);
+  if (filter.keyword) baseParams.push(["q", filter.keyword]);
+  if (one(sp.from)) baseParams.push(["from", one(sp.from)]);
+  if (one(sp.to)) baseParams.push(["to", one(sp.to)]);
+  if (filter.excluded) baseParams.push(["excluded", filter.excluded]);
   const input = "rounded border border-gray-300 px-2 py-1.5 text-sm";
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">위협정보</h1>
       <form method="get" className="space-y-3 rounded border border-gray-200 p-3">
+        <input type="hidden" name="size" value={size} />
         <div className="flex flex-wrap items-center gap-4 text-sm">
           <span className="font-medium">종류</span>
           {INDICATOR_TYPES.map((t) => (
@@ -101,8 +103,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
         </div>
       </form>
 
-      <p className="text-sm text-gray-600">총 {total.toLocaleString("ko-KR")}건</p>
-      <div className="table-card">
+            <div className="table-card">
         <table className="min-w-[1000px]">
           <thead>
             <tr className="border-b border-gray-300 text-left">
@@ -150,13 +151,7 @@ export default async function IndicatorsPage({ searchParams }: { searchParams: P
           </tbody>
         </table>
       </div>
-      <div className="flex items-center gap-3 text-sm">
-        {page > 1 && <Link href={pageHref(page - 1)} className="underline">이전</Link>}
-        <span>
-          {page} / {pages}
-        </span>
-        {page < pages && <Link href={pageHref(page + 1)} className="underline">다음</Link>}
-      </div>
+      <Pagination page={curPage} total={total} size={size} baseParams={baseParams} />
     </div>
   );
 }

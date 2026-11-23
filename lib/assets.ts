@@ -50,6 +50,34 @@ function check(input: AssetInput): Result<{ clean: Omit<typeof assets.$inferInse
   };
 }
 
+function assetWhere(f: { keyword?: string; enabled?: boolean }) {
+  const kw = f.keyword?.trim();
+  return and(
+    f.enabled === undefined ? undefined : eq(assets.enabled, f.enabled),
+    kw
+      ? or(
+          ilike(assets.name, `%${escapeLike(kw)}%`),
+          ilike(assets.target, `%${escapeLike(kw.toLowerCase())}%`),
+          ilike(assets.owner, `%${escapeLike(kw)}%`),
+          ilike(assets.department, `%${escapeLike(kw)}%`),
+        )
+      : undefined,
+  );
+}
+
+/** 쪽 나누기 목록 */
+export async function listAssetsPage(db: Db, f: { keyword?: string; enabled?: boolean }, opts: { page: number; pageSize: number }) {
+  const rows = await db
+    .select()
+    .from(assets)
+    .where(assetWhere(f))
+    .orderBy(asc(assets.name), asc(assets.id))
+    .limit(opts.pageSize)
+    .offset((Math.max(opts.page, 1) - 1) * opts.pageSize);
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(assets).where(assetWhere(f));
+  return { rows, total: n };
+}
+
 export async function listAssets(db: Db, f: { keyword?: string; enabled?: boolean } = {}) {
   const kw = f.keyword?.trim();
   return db

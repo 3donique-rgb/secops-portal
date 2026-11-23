@@ -5,17 +5,30 @@ import { SelectAll } from "@/components/select-all";
 import { ACTIONS_URL, MAX_MANUAL } from "@/lib/scan-dispatch";
 import { requestScanAction } from "./actions";
 import { getDb } from "@/db";
-import { listAssets } from "@/lib/assets";
+import { Pagination } from "@/components/pagination";
+import { listAssetsPage } from "@/lib/assets";
+import { parsePage, parsePageSize, totalPages } from "@/lib/pagination";
 import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "자산 - 보안관제 포털" };
 
-export default async function AssetsPage({ searchParams }: { searchParams: Promise<{ q?: string; state?: string }> }) {
+export default async function AssetsPage({ searchParams }: { searchParams: Promise<{ q?: string; state?: string; page?: string; size?: string }> }) {
   const user = await requireUser();
   const admin = user.role === "admin";
   const sp = await searchParams;
   const enabled = sp.state === "on" ? true : sp.state === "off" ? false : undefined;
-  const rows = await listAssets(getDb(), { keyword: sp.q?.slice(0, 100), enabled });
+  const db = getDb();
+  const filter = { keyword: sp.q?.slice(0, 100), enabled };
+  const size = parsePageSize(sp.size, 10);
+  const page = parsePage(sp.page);
+  const first = await listAssetsPage(db, filter, { page, pageSize: size });
+  const pages = totalPages(first.total, size);
+  // 마지막 쪽보다 큰 번호를 입력하면 마지막 쪽을 보여 준다
+  const { rows, total } = page > pages ? await listAssetsPage(db, filter, { page: pages, pageSize: size }) : first;
+  const curPage = Math.min(page, pages);
+  const baseParams: [string, string][] = [];
+  if (filter.keyword) baseParams.push(["q", filter.keyword]);
+  if (sp.state === "on" || sp.state === "off") baseParams.push(["state", sp.state]);
   const input = "rounded border border-gray-300 px-2 py-1.5 text-sm";
   const tableEl = (
       <div className="table-card">
@@ -79,6 +92,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
         )}
       </div>
       <form method="get" className="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="size" value={size} />
         <label className="text-sm">
           검색 (이름·대상·담당자·부서)
           <input name="q" defaultValue={sp.q ?? ""} maxLength={100} className={`${input} block`} />
@@ -101,7 +115,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
               선택한 자산 지금 점검
             </button>
             <p className="text-sm text-gray-600">
-              총 {rows.length.toLocaleString("ko-KR")}개 · 체크한 자산을 바로 점검합니다 (한 번에 최대 {MAX_MANUAL}개, 점검 사용 중인 자산만)
+              체크한 자산을 바로 점검합니다 (한 번에 최대 {MAX_MANUAL}개, 점검 사용 중인 자산만. 전체 선택은 지금 보이는 쪽만 선택합니다)
             </p>
           </div>
           <p className="text-xs text-gray-500">
@@ -116,10 +130,10 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
         </ActionForm>
       ) : (
         <>
-          <p className="text-sm text-gray-600">총 {rows.length.toLocaleString("ko-KR")}개</p>
           {tableEl}
         </>
       )}
+      <Pagination page={curPage} total={total} size={size} baseParams={baseParams} />
     </div>
   );
 }
