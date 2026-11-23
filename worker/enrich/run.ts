@@ -7,6 +7,9 @@
 import dns from "node:dns/promises";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { domainIps, indicators, netRanges } from "../../db/schema";
+
+const DELEGATED_LABEL = (label: string) => `${label} 할당 대역`;
+import { DELEGATED_FILES, parseDelegated } from "../../lib/delegated";
 import { ipv4ToNum, lookupRdap, numToIpv4 } from "../../lib/geo";
 import type { Db } from "../../lib/indicators";
 import { isReservedIp } from "../../lib/normalize";
@@ -14,31 +17,39 @@ import { isReservedIp } from "../../lib/normalize";
 export type EnrichOptions = {
   maxDomains?: number;
   maxRdap?: number;
+  /** RDAP 조회 사이 대기(ms). 서버 부담을 줄이기 위해 기본 1초 */
+  rdapDelayMs?: number;
+  /** 이 시각이 지나면 새 도메인 확인을 시작하지 않는다 (작업 시간 제한 보호) */
+  deadlineMs?: number;
+  /** false 면 RIR 국가 목록을 받지 않는다 (시험용) */
+  delegated?: boolean;
+  /** RIR 국가 목록을 다시 받을 주기 (일). 0이면 항상 */
+  delegatedMaxAgeDays?: number;
   dnsConcurrency?: number;
   rdapConcurrency?: number;
   resolve4?: (domain: string) => Promise<string[]>;
   fetchImpl?: typeof fetch;
   now?: Date;
 };
-export type EnrichSummary = { resolved: number; unresolved: number; rdapLookups: number; ranges: number; stopped: string | null };
+export type EnrichSummary = { resolved: number; unresolved: number; rdapLookups: number; ranges: number; delegatedRanges: number; stopped: string | null };
 
 const defaultResolve4 = async (d: string) => {
-  const r = new dns.Resolver({ timeout: 3000, tries: 2 });
+  const r = new dns.Resolver({ timeout: 2500, tries: 1 });
   return r.resolve4(d);
 };
 
-async function pool<T>(items: T[], size: number, fn: (x: T) => Promise<void>) {
+async function pool<T>(items: T[], size: number, fn: (x: T) => Promise<void>, deadline = Infinity) {
   let i = 0;
   await Promise.all(
     Array.from({ length: Math.max(1, Math.min(size, items.length || 1)) }, async () => {
-      while (i < items.length) await fn(items[i++]);
+      while (i < items.length && Date.now() < deadline) await fn(items[i++]);
     }),
   );
 }
 
 export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<EnrichSummary> {
   const now = opts.now ?? new Date();
-  const out: EnrichSummary = { resolved: 0, unresolved: 0, rdapLookups: 0, ranges: 0, stopped: null };
+  const out: EnrichSummary = { resolved: 0, unresolved: 0, rdapLookups: 0, ranges: 0, delegatedRanges: 0, stopped: null };
   const resolve4 = opts.resolve4 ?? defaultResolve4;
 
   // 1) 도메인 → IP (처음, 또는 IP는 30일·못 찾은 것은 7일이 지나 다시 확인)
@@ -60,7 +71,7 @@ export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<Enric
     )
     .orderBy(sql`${domainIps.resolvedAt} asc nulls first`, sql`${indicators.lastSeenAt} desc`)
     .limit(opts.maxDomains ?? 5000);
-  await pool(doms, opts.dnsConcurrency ?? 50, async (d) => {
+  await pool(doms, opts.dnsConcurrency ?? 100, async (d) => {
     let ips: string[] = [];
     try {
       ips = await resolve4(d.value);
@@ -75,9 +86,12 @@ export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<Enric
       .onConflictDoUpdate({ target: domainIps.indicatorId, set: row });
     if (ip) out.resolved++;
     else out.unresolved++;
-  });
+  }, opts.deadlineMs ?? Infinity);
 
-  // 2) 국가를 모르는 IP → RDAP (도메인이 가리키는 IP + IP 위협정보)
+  // 2) RIR 국가 목록: 비어 있거나 오래되면 새로 받는다 (하루 몇 번 와도 받지 않고, 기본 14일 주기)
+  if (opts.delegated !== false) await refreshDelegated(db, now, opts, out);
+
+  // 3) 그래도 국가를 모르는 IP → RDAP (도메인이 가리키는 IP + IP 위협정보)
   const unknownRes: unknown = await db.execute(sql`
     select distinct x.n::text as n from (
       select ${domainIps.ipNum} as n from ${domainIps} where ${domainIps.status} = 'ok'
@@ -87,13 +101,13 @@ export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<Enric
     ) x
     where x.n is not null
       and not exists (select 1 from ${netRanges} r where r.start_num <= x.n and r.end_num >= x.n)
-    limit ${opts.maxRdap ?? 600}`);
+    limit ${opts.maxRdap ?? 200}`);
   // 실행 환경에 따라 결과가 배열(postgres-js) 또는 {rows}(PGlite)로 온다
   const unknownRows = (Array.isArray(unknownRes) ? unknownRes : ((unknownRes as { rows?: unknown[] }).rows ?? [])) as { n: string }[];
   const nums = unknownRows.map((r) => Number(r.n));
   const covered: [number, number][] = [];
   let stop = false;
-  await pool(nums, opts.rdapConcurrency ?? 4, async (n) => {
+  await pool(nums, opts.rdapConcurrency ?? 1, async (n) => {
     if (stop || covered.some(([a, b]) => a <= n && n <= b)) return;
     const ip = numToIpv4(n);
     if (isReservedIp(ip)) {
@@ -102,6 +116,7 @@ export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<Enric
       return;
     }
     out.rdapLookups++;
+    if (opts.rdapDelayMs !== 0) await new Promise((res) => setTimeout(res, opts.rdapDelayMs ?? 1000));
     const r = await lookupRdap(ip, opts.fetchImpl);
     if (r.ok) {
       covered.push([r.info.startNum, r.info.endNum]);
@@ -122,3 +137,34 @@ export async function runEnrich(db: Db, opts: EnrichOptions = {}): Promise<Enric
   return out;
 }
 
+
+async function refreshDelegated(db: Db, now: Date, opts: EnrichOptions, out: EnrichSummary) {
+  const maxAge = (opts.delegatedMaxAgeDays ?? 14) * 24 * 3600 * 1000;
+  const f = opts.fetchImpl ?? fetch;
+  for (const file of DELEGATED_FILES) {
+    const label = DELEGATED_LABEL(file.label);
+    const [cur] = await db
+      .select({ n: sql<number>`count(*)::int`, newest: sql<Date | null>`max(${netRanges.fetchedAt})` })
+      .from(netRanges)
+      .where(eq(netRanges.netName, label));
+    if (cur.n > 0 && cur.newest && now.getTime() - new Date(cur.newest).getTime() < maxAge) continue;
+    let text: string;
+    try {
+      const res = await f(file.url, { signal: AbortSignal.timeout(120_000), cache: "no-store" });
+      if (!res.ok) continue;
+      text = await res.text();
+    } catch {
+      continue; // 다음 실행에서 다시 시도
+    }
+    const ranges = parseDelegated(text);
+    if (ranges.length < 100) continue; // 이상한 파일이면 기존 데이터를 지우지 않는다
+    await db.delete(netRanges).where(eq(netRanges.netName, label));
+    for (let i = 0; i < ranges.length; i += 3000) {
+      await db
+        .insert(netRanges)
+        .values(ranges.slice(i, i + 3000).map((r) => ({ startNum: r.startNum, endNum: r.endNum, countryCode: r.countryCode, netName: label, fetchedAt: now })))
+        .onConflictDoNothing();
+    }
+    out.delegatedRanges += ranges.length;
+  }
+}

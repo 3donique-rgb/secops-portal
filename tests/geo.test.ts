@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { domainIps, indicators, netRanges, sources } from "../db/schema";
 import { cleanCountry, geoForIndicators, ipv4ToNum, lookupRdap, numToIpv4, parseRdap } from "../lib/geo";
 import { saveIndicator } from "../lib/indicators";
+import { parseDelegated } from "../lib/delegated";
 import { runEnrich } from "../worker/enrich/run";
 import { createTestDb, resetData } from "./helpers/test-db";
 
@@ -64,6 +65,28 @@ describe("lookupRdap", () => {
   });
 });
 
+describe("RIR 국가 목록 해석", () => {
+  const sample = [
+    "2|apnic|20261122|3|19830613|20261121|+1000",
+    "apnic|*|ipv4|*|2|summary",
+    "apnic|KR|ipv4|58.120.0.0|131072|20080101|allocated",
+    "apnic|JP|ipv4|133.0.0.0|65536|20100101|assigned",
+    "apnic|AU|ipv4|1.0.0.0|256|20100101|reserved",
+    "apnic|KR|ipv6|2001:db8::|32|20100101|allocated",
+    "apnic|KR|asn|4766|1|20100101|allocated",
+    "# 주석",
+    "apnic|ZZ|ipv4|9.0.0.0|256|20100101|allocated",
+    "apnic|KR|ipv4|300.0.0.0|256|20100101|allocated",
+  ].join("\n");
+  it("IPv4 할당 줄만 대역으로 바꾼다", () => {
+    const r = parseDelegated(sample);
+    expect(r).toEqual([
+      { startNum: ipv4ToNum("58.120.0.0"), endNum: ipv4ToNum("58.120.0.0")! + 131071, countryCode: "KR" },
+      { startNum: ipv4ToNum("133.0.0.0"), endNum: ipv4ToNum("133.0.0.0")! + 65535, countryCode: "JP" },
+    ]);
+  });
+});
+
 describe("도메인 IP·국가 채우기", () => {
   beforeEach(async () => {
     await resetData(ctx.client);
@@ -80,7 +103,7 @@ describe("도메인 IP·국가 채우기", () => {
 
   it("도메인 IP를 찾고, 같은 대역은 RDAP 한 번만 조회한다", async () => {
     let calls = 0;
-    const r = await runEnrich(ctx.db, { resolve4, rdapConcurrency: 1, fetchImpl: rdapFetch(() => (calls++, { status: 200, body: good })) });
+    const r = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, rdapConcurrency: 1, fetchImpl: rdapFetch(() => (calls++, { status: 200, body: good })) });
     expect(r).toMatchObject({ resolved: 2, unresolved: 1 });
     expect(calls).toBe(1); // a.example, b.example, 58.9.9.9 모두 58.0.0.0/8
     const rows = await ctx.db.select().from(indicators);
@@ -100,19 +123,19 @@ describe("도메인 IP·국가 채우기", () => {
   });
 
   it("두 번째 실행은 다시 조회하지 않는다 (DNS 7일·30일 재확인 전)", async () => {
-    await runEnrich(ctx.db, { resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
+    await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
     let dnsCalls = 0;
     let rdapCalls = 0;
-    const r = await runEnrich(ctx.db, { resolve4: async (d) => (dnsCalls++, resolve4(d)), fetchImpl: rdapFetch(() => (rdapCalls++, { status: 200, body: good })) });
+    const r = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4: async (d) => (dnsCalls++, resolve4(d)), fetchImpl: rdapFetch(() => (rdapCalls++, { status: 200, body: good })) });
     expect(r.resolved + r.unresolved).toBe(0);
     expect(dnsCalls + rdapCalls).toBe(0);
   });
 
   it("못 찾은 도메인은 7일 뒤 다시 확인한다", async () => {
-    await runEnrich(ctx.db, { resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
+    await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
     dnsMap["gone.example"] = ["58.5.5.5"];
     try {
-      const r = await runEnrich(ctx.db, { resolve4, now: new Date(Date.now() + 8 * 86400_000), fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
+      const r = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, now: new Date(Date.now() + 8 * 86400_000), fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
       expect(r.resolved).toBe(1);
     } finally {
       dnsMap["gone.example"] = [];
@@ -120,16 +143,16 @@ describe("도메인 IP·국가 채우기", () => {
   });
 
   it("RDAP 한도(429)면 멈추고, 다음 실행에서 이어간다", async () => {
-    const r = await runEnrich(ctx.db, { resolve4, rdapConcurrency: 1, fetchImpl: rdapFetch(() => ({ status: 429 })) });
+    const r = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, rdapConcurrency: 1, fetchImpl: rdapFetch(() => ({ status: 429 })) });
     expect(r.stopped).toContain("한도");
     expect(await ctx.db.select().from(netRanges)).toHaveLength(0);
-    const r2 = await runEnrich(ctx.db, { resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
+    const r2 = await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4, fetchImpl: rdapFetch(() => ({ status: 200, body: good })) });
     expect(r2.ranges).toBeGreaterThan(0);
   });
 
   it("사설·예약 IP는 조회하지 않는다", async () => {
     let calls = 0;
-    await runEnrich(ctx.db, { resolve4: async () => ["10.0.0.5"], rdapConcurrency: 1, fetchImpl: rdapFetch(() => (calls++, { status: 200, body: good })) });
+    await runEnrich(ctx.db, { rdapDelayMs: 0, delegated: false, resolve4: async () => ["10.0.0.5"], rdapConcurrency: 1, fetchImpl: rdapFetch(() => (calls++, { status: 200, body: good })) });
     expect(calls).toBe(1); // 58.9.9.9(IP 위협정보)만 조회
     const rows = await ctx.db.select().from(domainIps);
     expect(rows.every((x) => x.ip === "10.0.0.5" || x.ip === null)).toBe(true);
@@ -145,5 +168,36 @@ describe("도메인 IP·국가 채우기", () => {
     const row = (await ctx.db.select().from(indicators)).find((x) => x.value === "58.1.0.7")!;
     const m = await geoForIndicators(ctx.db, [row]);
     expect(m.get(row.id)).toMatchObject({ countryCode: "JP", netName: "작은 대역" });
+  });
+
+  it("RIR 국가 목록으로 RDAP 없이 국가를 채운다", async () => {
+    const lines = ["apnic|KR|ipv4|58.0.0.0|16777216|20080101|allocated"];
+    for (let i = 0; i < 120; i++) lines.push(`apnic|JP|ipv4|133.${i}.0.0|65536|20100101|allocated`);
+    let rdap = 0;
+    const f = (async (u: string) => {
+      if (u.includes("rdap.org")) {
+        rdap++;
+        return new Response("{}", { status: 404 });
+      }
+      return new Response(u.includes("apnic") ? lines.join("\n") : "", { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await runEnrich(ctx.db, { resolve4, fetchImpl: f, rdapDelayMs: 0 });
+    expect(r.delegatedRanges).toBe(121);
+    expect(rdap).toBe(0);
+    const rows = await ctx.db.select().from(indicators);
+    const m = await geoForIndicators(ctx.db, rows);
+    expect(m.get(rows.find((x) => x.value === "a.example")!.id)).toMatchObject({ countryCode: "KR", netName: "APNIC 할당 대역" });
+    // 14일 안에는 다시 받지 않는다
+    let downloads = 0;
+    const g = (async (u: string) => (u.includes("rdap.org") ? new Response("{}", { status: 404 }) : (downloads++, new Response(""))) ) as unknown as typeof fetch;
+    await runEnrich(ctx.db, { resolve4, fetchImpl: g, rdapDelayMs: 0, delegatedMaxAgeDays: 14 });
+    expect(downloads).toBe(4); // 목록이 비어 있던 나머지 4곳만 시도 (APNIC은 최신이라 건너뜀)
+  });
+
+  it("너무 짧거나 이상한 목록은 받아도 기존 데이터를 지우지 않는다", async () => {
+    await ctx.db.insert(netRanges).values({ startNum: 1, endNum: 2, countryCode: "KR", netName: "APNIC 할당 대역" });
+    const f = (async () => new Response("apnic|KR|ipv4|58.0.0.0|256|20080101|allocated", { status: 200 })) as unknown as typeof fetch;
+    await runEnrich(ctx.db, { resolve4, fetchImpl: f, rdapDelayMs: 0, delegatedMaxAgeDays: 0 });
+    expect((await ctx.db.select().from(netRanges)).some((x) => x.startNum === 1)).toBe(true);
   });
 });
