@@ -28,6 +28,7 @@ export const AUDIT_ACTIONS = [
   "reputation_add",
   "scan_request",
   "reputation_vt_lookup",
+  "tool_use",
 ] as const;
 
 export type AuditInput = {

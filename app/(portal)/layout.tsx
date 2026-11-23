@@ -15,6 +15,7 @@ const MENU = [
   item("/indicators", "위협정보", "shield"),
   item("/reports", "보고서", "report"),
   item("/assets", "자산 점검", "server"),
+  item("/tools", "환경점검", "tool"),
 ];
 
 const ADMIN_MENU = [
