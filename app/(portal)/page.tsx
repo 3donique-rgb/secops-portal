@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Icon, type IconName } from "@/components/icons";
 import { getDb } from "@/db";
 import { getDashboard } from "@/lib/dashboard";
@@ -70,7 +71,8 @@ export default async function DashboardPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-1">
         <h1 className="text-xl font-bold tracking-tight">대시보드</h1>
-        <p className="text-xs text-[var(--ink-soft)]">{fmt(now)} 기준</p>
+        <p className="text-xs text-[var(--ink-soft)]">{fmt(now)} 기준 · 10분마다 자동 갱신</p>
+        <AutoRefresh minutes={10} />
       </div>
 
       <Panel title="최신 보안뉴스" action={<Link href="/news" className="text-xs text-[var(--signal)] hover:underline">모두 보기</Link>}>
