@@ -22,12 +22,27 @@ export default async function NewsDetail({ params }: { params: Promise<{ id: str
         <div className="flex gap-1.5"><dt>언론사</dt><dd className="text-[var(--ink)]">{a.publisher || "-"}</dd></div>
         <div className="flex gap-1.5"><dt>수집 검색어</dt><dd className="text-[var(--ink)]">{a.keywords.join(", ") || "-"}</dd></div>
       </dl>
-      <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
-        <h2 className="mb-2 text-sm font-semibold">본문 (일부)</h2>
-        {a.body ? <p className="whitespace-pre-line text-sm leading-7">{a.body}</p> : <p className="text-sm text-[var(--ink-soft)]">본문을 가져오지 못했습니다. 아래 원문 링크에서 확인하세요.</p>}
+      <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
+        {a.body ? (
+          <div className="space-y-4 text-[15px] leading-8">
+            {a.body.split(/\n{2,}/).map((para, i) => (
+              <p key={i}>{para}</p>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--ink-soft)]">본문을 가져오지 못했습니다. 아래 원문 링크에서 확인하세요.</p>
+        )}
       </section>
-      <p className="text-xs text-[var(--ink-soft)]">기사 전문이 아니라 일부만 저장합니다. 저작권은 각 언론사에 있습니다.</p>
-      <a href={a.url} target="_blank" rel="noopener noreferrer" className="inline-block rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white">원문 보기</a>
+      <aside className="rounded-xl border border-[var(--line)] p-4 text-sm">
+        <p className="font-semibold">출처</p>
+        <p className="mt-1">
+          {a.publisher || "언론사 미상"} · {when} 등록 ·{" "}
+          <a href={a.url} target="_blank" rel="noopener noreferrer" className="break-all underline">
+            원문 보기
+          </a>
+        </p>
+        <p className="mt-2 text-xs text-[var(--ink-soft)]">기사 저작권은 해당 언론사에 있으며, 이 화면은 사내 보안관제 열람용입니다. 외부 공유·재배포하지 마세요. 본문 추출이 불완전할 수 있으니 중요한 내용은 원문으로 확인하세요.</p>
+      </aside>
     </div>
   );
 }

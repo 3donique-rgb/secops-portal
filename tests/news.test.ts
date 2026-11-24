@@ -33,13 +33,17 @@ describe("뉴스 해석", () => {
     expect(titleKey("KT, 해킹!")).toBe(titleKey("kt 해킹"));
     expect(titleKey("a")).not.toBe(titleKey("b"));
   });
-  it("본문 추출", () => {
-    const html = `<html><body><nav><p>메뉴</p></nav><article><p>${"해킹 피해가 확인되었다. ".repeat(6)}</p><p>무단 전재 및 재배포 금지 ${"가".repeat(60)}</p><p>짧음</p></article></body></html>`;
+  it("본문 추출: 문단 유지, 군더더기 제거", () => {
+    const html = `<html><body><nav><p>메뉴</p></nav><div id="articleBody"><p>첫 문단입니다. ${"해킹 피해가 확인되었다. ".repeat(6)}</p><p>둘째 문단입니다. ${"사고 경위가 설명된다. ".repeat(6)}</p><p>무단 전재 및 재배포 금지</p></div><script>var a=1</script></body></html>`;
     const t = extractArticleText(html);
-    expect(t.startsWith("해킹 피해가")).toBe(true);
+    expect(t.startsWith("첫 문단입니다.")).toBe(true);
+    expect(t.split("\n\n")).toHaveLength(2);
     expect(t).not.toContain("무단");
+    expect(t).not.toContain("메뉴");
+    const br = `<div class="article-body">${"가나다라마바사 ".repeat(30)}<br><br>${"아자차카타파하 ".repeat(30)}</div>`;
+    expect(extractArticleText(br).split("\n\n")).toHaveLength(2);
     expect(extractArticleText(`<meta property="og:description" content="메타 설명 &amp; 요약">`)).toBe("메타 설명 & 요약");
-    expect(extractArticleText(`<article>${"<p>" + "가".repeat(100) + "</p>".repeat(1)}</article>`.repeat(30), 200).length).toBeLessThanOrEqual(201);
+    expect(extractArticleText(`<article>${"<p>" + "가".repeat(100) + "</p>"}</article>`.repeat(5), 200).length).toBeLessThanOrEqual(201);
   });
   it("구글 링크 해독·주소 안전 확인", async () => {
     const id = Buffer.from("\x08\x13\x22\x1ahttps://www.boannews.com/media/view.asp?idx=1\x92\x01").toString("base64url");

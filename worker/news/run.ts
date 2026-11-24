@@ -71,7 +71,7 @@ export async function runNews(db: Db, opt: NewsOptions = {}): Promise<NewsResult
     const rows = await db.select({ k: newsArticles.titleKey }).from(newsArticles).where(sql`${newsArticles.titleKey} in ${part}`);
     for (const r of rows) known.add(r.k);
   }
-  let bodyBudget = opt.bodyLimit ?? 150;
+  let bodyBudget = opt.bodyLimit ?? 200;
   for (const [k, { item, kws }] of byKey) {
     if (known.has(k)) continue;
     let body = item.summary;
@@ -80,7 +80,7 @@ export async function runNews(db: Db, opt: NewsOptions = {}): Promise<NewsResult
       if (target && (await safe(target))) {
         bodyBudget--;
         try {
-          const text = extractArticleText(await getText(f, target, {}, 1_000_000));
+          const text = extractArticleText(await getText(f, target, {}, 3_000_000));
           if (text.length > body.length) {
             body = text;
             res.bodies++;
@@ -92,12 +92,38 @@ export async function runNews(db: Db, opt: NewsOptions = {}): Promise<NewsResult
     }
     const r = await db
       .insert(newsArticles)
-      .values({ titleKey: k, title: item.title.slice(0, 500), publisher: item.publisher.slice(0, 100), publishedAt: item.publishedAt, body: body.slice(0, 2000), url: item.link, provider: item.provider, keywords: [...kws] })
+      .values({ titleKey: k, title: item.title.slice(0, 500), publisher: item.publisher.slice(0, 100), publishedAt: item.publishedAt, body: body.slice(0, 30500), url: item.link, provider: item.provider, keywords: [...kws] })
       .onConflictDoNothing()
       .returning({ id: newsArticles.id });
     if (r.length) {
       res.inserted++;
       res.byProvider[item.provider] = (res.byProvider[item.provider] ?? 0) + 1;
+    }
+  }
+
+  // 이전에 본문을 못 가져온 최근 기사(짧은 본문)는 다시 시도한다
+  let retry = Math.min(bodyBudget, 60);
+  if (retry > 0) {
+    const weak = await db
+      .select({ id: newsArticles.id, url: newsArticles.url, provider: newsArticles.provider, body: newsArticles.body })
+      .from(newsArticles)
+      .where(sql`length(${newsArticles.body}) < 400 and ${newsArticles.publishedAt} > now() - interval '7 days'`)
+      .orderBy(sql`${newsArticles.publishedAt} desc`)
+      .limit(retry * 2);
+    for (const w of weak) {
+      if (retry <= 0) break;
+      const target = w.provider === "google" ? decodeGoogleNewsUrl(w.url) : w.url;
+      if (!target || !(await safe(target))) continue;
+      retry--;
+      try {
+        const text = extractArticleText(await getText(f, target, {}, 3_000_000));
+        if (text.length > w.body.length + 50) {
+          await db.update(newsArticles).set({ body: text.slice(0, 30500) }).where(sql`${newsArticles.id} = ${w.id}`);
+          res.bodies++;
+        }
+      } catch {
+        /* 다음 실행에서 다시 시도 */
+      }
     }
   }
   return res;

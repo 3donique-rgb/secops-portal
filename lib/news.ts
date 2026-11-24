@@ -1,13 +1,13 @@
 /**
  * 보안뉴스: 구글 뉴스 RSS와 네이버 검색 API 결과를 읽어 정리한다.
- * - 저장하는 것: 제목, 등록일시, 언론사, 본문 일부(최대 1,500자), 원문 주소. 기사 전문은 저장하지 않고 원문 링크로 연결한다.
+ * - 저장하는 것: 제목, 등록일시, 언론사, 본문(최대 3만자), 원문 주소. 원문 링크와 함께 사내 열람용으로 보여 준다.
  */
 import { createHash } from "node:crypto";
 import dns from "node:dns";
 import { isReservedIp } from "./normalize";
 
 export const NEWS_KEYWORDS = ["해킹", "사이버해킹", "사이버보안", "정보유출", "정보보안"] as const;
-export const BODY_MAX = 1500;
+export const BODY_MAX = 30000;
 
 export type NewsItem = { title: string; link: string; publishedAt: Date; publisher: string; summary: string; provider: "google" | "naver" };
 
@@ -106,16 +106,47 @@ export function titleKey(title: string): string {
   return createHash("sha256").update(norm).digest("hex");
 }
 
-/** 기사 HTML에서 본문 일부를 뽑는다: 본문 문단(<p>)을 우선, 없으면 메타 설명 */
+/** 태그를 없애되 문단·줄바꿈은 살린다 */
+function textWithBreaks(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<(script|style|figure|aside|nav|footer|iframe|form)[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<br\s*\/?>|<\/p>|<\/div>|<\/li>/gi, "\n")
+      .replace(/<[^>]*>/g, " "),
+  )
+    .split("\n")
+    .map((l) => l.replace(/[ \t\u00a0]+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+const JUNK = /(무단\s*전재|재배포\s*금지|저작권자|copyright|all rights reserved|기사제보|구독하기|공유하기|댓글)/i;
+
+/** 기사 HTML에서 본문을 뽑는다: 본문 영역(articleBody 등) → <article> → 문단(<p>) 순서, 못 찾으면 메타 설명 */
 export function extractArticleText(html: string, max = BODY_MAX): string {
-  const scope = /<article[\s\S]*?<\/article>/i.exec(html)?.[0] ?? html;
-  const paras: string[] = [];
-  for (const m of scope.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi)) {
-    const t = stripHtml(m[1]);
-    if (t.length >= 40 && !/(저작권|무단\s*전재|구독|copyright|all rights reserved)/i.test(t)) paras.push(t);
-    if (paras.join(" ").length > max) break;
+  const candidates: string[] = [];
+  const body = /<(div|section|article)[^>]*(?:itemprop=["']articleBody["']|id=["'][^"']*(?:article[-_]?body|news[-_]?body|newsct_article|articleText|article_txt|view_con|newsContent|cont_?body)[^"']*["']|class=["'][^"']*(?:article[-_]?body|news[-_]?body|article_txt|view_con|article-view-content)[^"']*["'])[^>]*>([\s\S]*?)<\/\1>/i.exec(html);
+  if (body) candidates.push(body[2]);
+  const art = /<article[\s\S]*?<\/article>/i.exec(html)?.[0];
+  if (art) candidates.push(art);
+  let text = "";
+  for (const c of candidates) {
+    const t = textWithBreaks(c)
+      .split("\n\n")
+      .filter((l) => !(l.length < 120 && JUNK.test(l)))
+      .join("\n\n");
+    if (t.length > text.length) text = t;
+    if (text.length >= 300) break;
   }
-  let text = paras.join(" ");
+  if (text.length < 300) {
+    const paras: string[] = [];
+    for (const m of html.matchAll(/<p(?:\s[^>]*)?>([\s\S]*?)<\/p>/gi)) {
+      const t = stripHtml(m[1]);
+      if (t.length >= 40 && !JUNK.test(t)) paras.push(t);
+    }
+    const t = paras.join("\n\n");
+    if (t.length > text.length) text = t;
+  }
   if (text.length < 80) {
     const og = /<meta[^>]+(?:property=["']og:description["']|name=["']description["'])[^>]*content=["']([^"']*)["']/i.exec(html) ?? /<meta[^>]+content=["']([^"']*)["'][^>]*(?:property=["']og:description["']|name=["']description["'])/i.exec(html);
     if (og) text = decodeEntities(og[1]).replace(/\s+/g, " ").trim();
