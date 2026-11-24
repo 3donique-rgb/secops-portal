@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { getDashboard } from "@/lib/dashboard";
 import { TYPE_LABEL } from "@/lib/labels";
 import { NOTIFICATION_LABEL } from "@/lib/notifications";
+import { latestNews } from "@/lib/news-query";
 import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "대시보드 - 보안관제 포털" };
@@ -45,6 +46,7 @@ function Dot({ tone }: { tone: "ok" | "warn" | "bad" | "off" }) {
 export default async function DashboardPage() {
   const user = await requireUser();
   const d = await getDashboard(getDb());
+  const news = await latestNews(getDb(), 5);
   const now = new Date();
   const active = d.sources.filter((s) => s.enabled);
   const problems = active.filter((s) => s.stale || s.lastStatus === "fail");
@@ -70,6 +72,24 @@ export default async function DashboardPage() {
         <h1 className="text-xl font-bold tracking-tight">대시보드</h1>
         <p className="text-xs text-[var(--ink-soft)]">{fmt(now)} 기준</p>
       </div>
+
+      <Panel title="최신 보안뉴스" action={<Link href="/news" className="text-xs text-[var(--signal)] hover:underline">모두 보기</Link>}>
+        {news.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-[var(--ink-soft)]">아직 수집된 기사가 없습니다.</p>
+        ) : (
+          <ul>
+            {news.map((a) => (
+              <li key={a.id} className="flex items-baseline gap-3 border-b border-[var(--line)] px-5 py-2.5 text-sm last:border-b-0">
+                <Link href={`/news/${a.id}`} className="min-w-0 flex-1 truncate font-medium hover:underline">{a.title}</Link>
+                <span className="hidden shrink-0 text-xs text-[var(--ink-soft)] sm:inline">{a.publisher || "-"}</span>
+                <time dateTime={a.publishedAt.toISOString()} className="shrink-0 text-xs text-[var(--ink-soft)]">
+                  {a.publishedAt.toLocaleString("ko-KR", { timeZone: KST, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}
+                </time>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
       <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl px-5 py-3.5" style={{ background: banner.bg, color: banner.fg }}>
         <Icon name={state === "ok" ? "check" : "alert"} size={18} />

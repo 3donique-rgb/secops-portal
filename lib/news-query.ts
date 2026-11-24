@@ -30,3 +30,12 @@ export async function getNews(db: Db, id: string) {
   const [r] = await db.select().from(newsArticles).where(eq(newsArticles.id, id)).limit(1);
   return r ?? null;
 }
+
+/** 대시보드용: 가장 최신 기사 n개 */
+export async function latestNews(db: Db, n = 5) {
+  return db
+    .select({ id: newsArticles.id, title: newsArticles.title, publisher: newsArticles.publisher, publishedAt: newsArticles.publishedAt })
+    .from(newsArticles)
+    .orderBy(desc(newsArticles.publishedAt), desc(newsArticles.createdAt))
+    .limit(n);
+}

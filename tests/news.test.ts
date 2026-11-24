@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { newsArticles } from "../db/schema";
 import { decodeGoogleNewsUrl, extractArticleText, isSafePublicUrl, parseGoogleRss, parseNaverNews, publisherFromUrl, splitGoogleTitle, stripHtml, titleKey } from "../lib/news";
-import { getNews, searchNews } from "../lib/news-query";
+import { getNews, latestNews, searchNews } from "../lib/news-query";
 import { runNews } from "../worker/news/run";
 import { createTestDb, resetData } from "./helpers/test-db";
 
@@ -105,5 +105,6 @@ describe("수집·조회", () => {
     expect((await searchNews(ctx.db, { keyword: "정보보안" }, { page: 1, pageSize: 10 })).total).toBeGreaterThan(0);
     expect((await searchNews(ctx.db, { q: "100%_" }, { page: 1, pageSize: 10 })).total).toBe(0);
     expect((await getNews(ctx.db, p1.rows[0].id))?.url).toContain("etnews");
+    expect((await latestNews(ctx.db, 2)).map((r) => r.title)).toEqual(["새 기사 정보보안", "KT 해킹 사고 & 정보유출 확인"]);
   });
 });
