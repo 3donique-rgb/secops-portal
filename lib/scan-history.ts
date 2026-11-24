@@ -1,5 +1,5 @@
 /** 자산 상세 화면용 점검 이력 조회와 날짜 간 비교 (7.8). */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { scanResults } from "../db/schema";
 import type { Db } from "./indicators";
 
@@ -44,4 +44,13 @@ export function compareScans(from: ScanRow, to: ScanRow): ScanComparison {
     pagesRemoved: from.exposedPages.filter((p) => !tg.has(p.path)),
     certChanged: (from.certExpiresAt?.getTime() ?? null) !== (to.certExpiresAt?.getTime() ?? null),
   };
+}
+
+/** 자산별 가장 최근 점검 결과 (자산 id → 결과). 점검 이력이 없는 자산은 들어 있지 않다. */
+export async function latestScans(db: Db, assetIds: string[]): Promise<Map<string, ScanRow>> {
+  const map = new Map<string, ScanRow>();
+  if (assetIds.length === 0) return map;
+  const rows = await db.select().from(scanResults).where(inArray(scanResults.assetId, assetIds)).orderBy(desc(scanResults.scanDate));
+  for (const r of rows) if (!map.has(r.assetId)) map.set(r.assetId, r);
+  return map;
 }

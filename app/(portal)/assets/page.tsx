@@ -6,7 +6,10 @@ import { ACTIONS_URL, MAX_MANUAL } from "@/lib/scan-dispatch";
 import { requestScanAction } from "./actions";
 import { getDb } from "@/db";
 import { Pagination } from "@/components/pagination";
+import { RiskBadge } from "@/components/risk-badge";
 import { listAssetsPage } from "@/lib/assets";
+import { assessRisk } from "@/lib/risk";
+import { latestScans } from "@/lib/scan-history";
 import { parsePage, parsePageSize, totalPages } from "@/lib/pagination";
 import { requireUser } from "@/lib/session";
 
@@ -26,6 +29,8 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
   // 마지막 쪽보다 큰 번호를 입력하면 마지막 쪽을 보여 준다
   const { rows, total } = page > pages ? await listAssetsPage(db, filter, { page: pages, pageSize: size }) : first;
   const curPage = Math.min(page, pages);
+  const scans = await latestScans(db, rows.map((r) => r.id));
+  const now = new Date();
   const baseParams: [string, string][] = [];
   if (filter.keyword) baseParams.push(["q", filter.keyword]);
   if (sp.state === "on" || sp.state === "off") baseParams.push(["state", sp.state]);
@@ -41,6 +46,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                 </th>
               )}
               <th className="py-2 pr-3">자산명</th>
+              <th className="pr-3">위험등급</th>
               <th className="pr-3">점검 대상</th>
               <th className="pr-3">담당자</th>
               <th className="pr-3">부서</th>
@@ -62,6 +68,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                     {a.name}
                   </Link>
                 </td>
+                <td className="pr-3"><RiskBadge risk={assessRisk(scans.get(a.id) ?? null, now)} /></td>
                 <td className="pr-3 break-all">{a.target}</td>
                 <td className="pr-3">{a.owner ?? ""}</td>
                 <td className="pr-3">{a.department ?? ""}</td>
@@ -72,7 +79,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={admin ? 8 : 7} className="py-6 text-center text-gray-500">
+                <td colSpan={admin ? 9 : 8} className="py-6 text-center text-gray-500">
                   등록된 자산이 없습니다.
                 </td>
               </tr>
