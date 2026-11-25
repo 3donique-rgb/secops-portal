@@ -14,6 +14,8 @@
     "enrich": "tsx worker/enrich/cli.ts",
     "vt:auto": "tsx worker/vt/cli.ts",
     "news": "tsx worker/news/cli.ts",
+    "cron:setup": "tsx scripts/cron-setup.ts",
+    "cron:status": "tsx scripts/cron-setup.ts --status",
     "db:update": "tsx scripts/db-update.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "seed:admin": "tsx scripts/seed-admin.ts",

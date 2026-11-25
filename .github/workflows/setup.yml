@@ -16,6 +16,8 @@ on:
           - admin       # 최초 관리자 계정 만들기
           - demo        # 가짜 데이터 넣기
           - demo-clear  # 가짜 데이터만 지우기
+          - cron-setup  # 정시 실행 예약을 Supabase에 만들기 (GitHub 예약이 늦거나 빠질 때 대비)
+          - cron-status # 정시 실행 예약이 잘 돌고 있는지 확인
 
 permissions:
   contents: read
@@ -51,5 +53,15 @@ jobs:
       - name: 가짜 데이터 지우기
         if: inputs.task == 'demo-clear'
         run: npm run seed:demo -- --clear
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: 정시 실행 예약 만들기
+        if: inputs.task == 'cron-setup'
+        run: npm run cron:setup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: 정시 실행 예약 확인
+        if: inputs.task == 'cron-status'
+        run: npm run cron:status
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

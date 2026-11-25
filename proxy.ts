@@ -13,6 +13,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // 로그인 화면, 정적 파일, 수집기용 API(자체 키 인증)는 제외
-  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|api/siem).*)"],
+  // 로그인 화면, 정적 파일, 수집기용 API·예약 실행 요청(자체 비밀 값 인증)는 제외
+  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|api/siem|api/cron).*)"],
 };

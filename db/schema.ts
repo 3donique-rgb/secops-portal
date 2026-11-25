@@ -415,3 +415,12 @@ export const newsArticles = pgTable(
   },
   (t) => [index("news_articles_published_idx").on(t.publishedAt.desc())],
 );
+
+/**
+ * 예약 실행 설정: Supabase(pg_cron)가 포털에 "지금 실행" 요청을 보낼 때 쓰는 비밀 값.
+ * 행 단위 보안(RLS)을 켜 두어 Supabase 공개 API로는 읽을 수 없다 (포털 서버만 읽는다).
+ */
+export const cronConfig = pgTable("cron_config", {
+  key: text().primaryKey(),
+  value: text().notNull(),
+}).enableRLS();
